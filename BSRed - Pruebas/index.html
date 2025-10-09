@@ -104,9 +104,13 @@
         }
 
         document.addEventListener('DOMContentLoaded', function () {
-            // --- CONFIGURATION ---
-            // ⬇️ ¡MUY IMPORTANTE! REEMPLAZA LA SIGUIENTE LÍNEA CON LA URL PÚBLICA DE TU SERVIDOR EN RENDER ⬇️
+            // --- CONFIGURACIÓN FINAL ---
+            // ⬇️ PEGA AQUÍ LA URL DE TU SERVIDOR DE RENDER ⬇️
+            // Debe ser la dirección que termina en ".onrender.com"
             const API_URL = 'https://bsred.onrender.com/api/horarios';
+
+            // --- LÍNEA DE DEPURACIÓN ---
+            console.log('La aplicación está intentando conectar a esta URL:', API_URL);
 
             const scheduleContainer = document.getElementById('schedule-container');
             const searchInput = document.getElementById('search-input');
@@ -172,14 +176,18 @@
                 offlineBanner.classList.add('hidden');
                 scheduleContainer.innerHTML = '';
                 try {
+                    if (API_URL.includes('TU-URL-DE-RENDER')) {
+                        throw new Error('La URL de la API no ha sido configurada.');
+                    }
                     const response = await fetch(API_URL);
                     if (!response.ok) {
-                        throw new Error(`HTTP error! status: ${response.status}`);
+                        throw new Error(`Error del servidor! status: ${response.status}`);
                     }
                     allData = await response.json();
                     renderSchedule(allData, searchInput.value);
                 } catch (error) {
                     console.error('Error fetching data:', error);
+                    offlineBanner.textContent = `Error: ${error.message}. Asegúrate de que la URL de la API es correcta y que el servidor en Render está funcionando.`;
                     offlineBanner.classList.remove('hidden');
                     scheduleContainer.innerHTML = `<div class="text-center text-gray-400 py-8">No se pudieron cargar los horarios.</div>`;
                 } finally {
@@ -207,7 +215,6 @@
                 renderSchedule(allData, searchInput.value);
             });
             
-            // Notification setup
             const notificationBell = document.getElementById('notification-bell');
             notificationBell.addEventListener('click', () => {
                 if ('Notification' in window) {
@@ -244,8 +251,7 @@
                    showToast("La hora de este evento ya pasó.");
                    return;
                 }
-
-                // Notify 30 seconds before
+                
                 const timeout = eventTime.getTime() - now.getTime() - 30000;
 
                 if (timeout > 0) {
@@ -261,13 +267,11 @@
                 }
             });
 
-            // Initial data fetch
             fetchData();
         });
     </script>
 </body>
 </html>
-
 
 
 
