@@ -1,0 +1,281 @@
+<!DOCTYPE html>
+<html lang="es">
+
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Tótem Informativo - Buses Panguipulli</title>
+    <!-- Tailwind CSS for styling -->
+    <script src="https://cdn.tailwindcss.com"></script>
+    <!-- Google Fonts: Inter -->
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
+    
+    <!-- PWA Manifest -->
+    <link rel="manifest" href="manifest.json">
+    <!-- PWA Theme color -->
+    <meta name="theme-color" content="#1f2937">
+    
+    <style>
+        body {
+            font-family: 'Inter', sans-serif;
+            background-color: #111827; /* Dark background */
+        }
+        /* Custom scrollbar for better aesthetics */
+        ::-webkit-scrollbar { width: 6px; }
+        ::-webkit-scrollbar-track { background: #1f2937; }
+        ::-webkit-scrollbar-thumb { background: #4b5563; border-radius: 3px; }
+        
+        .status-a-tiempo { background-color: #10B981; color: white; }
+        .status-retrasado { background-color: #F59E0B; color: white; }
+        .status-cancelado { background-color: #EF4444; color: white; }
+        .status-próximo { background-color: #3B82F6; color: white; }
+
+        .tab-active {
+            border-bottom-color: #3B82F6;
+            color: #3B82F6;
+        }
+    </style>
+</head>
+
+<body class="text-gray-200">
+    <div id="offline-banner" class="hidden bg-red-600 text-white text-center p-2 text-sm font-semibold">
+        Error de Conexión: No se pudo contactar al servidor. Revisa tu conexión o intenta más tarde.
+    </div>
+
+    <div class="max-w-md mx-auto bg-[#1f2937] shadow-lg rounded-lg overflow-hidden my-4">
+        <!-- Header -->
+        <header class="flex items-center justify-between p-4 bg-gray-900 border-b border-gray-700">
+            <div class="flex items-center">
+                <img src="logo.jpg" alt="Logo" class="h-10 w-10 mr-3 rounded-md">
+                <div>
+                    <h1 class="text-lg font-bold text-white">Terminal Panguipulli</h1>
+                    <p class="text-xs text-gray-400">Horarios de Buses</p>
+                </div>
+            </div>
+            <button id="notification-bell" class="text-gray-400 hover:text-white">
+                <svg xmlns="http://www.w3.org/2000/svg" class="h-6 w-6" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15 17h5l-1.405-1.405A2.032 2.032 0 0118 14.158V11a6 6 0 10-12 0v3.159c0 .538-.214 1.055-.595 1.436L4 17h5m6 0v1a3 3 0 11-6 0v-1m6 0H9" />
+                </svg>
+            </button>
+        </header>
+
+        <!-- Search and Tabs -->
+        <div class="p-4">
+            <input type="text" id="search-input" placeholder="Buscar por destino, origen o empresa..." class="w-full p-2 rounded-md bg-gray-700 text-white border border-gray-600 focus:outline-none focus:ring-2 focus:ring-blue-500">
+            
+            <div class="border-b border-gray-700 mt-4">
+                <nav class="-mb-px flex space-x-4" aria-label="Tabs">
+                    <button id="tab-salidas" class="whitespace-nowrap py-3 px-1 border-b-2 font-medium text-sm tab-active">
+                        Salidas
+                    </button>
+                    <button id="tab-llegadas" class="whitespace-nowrap py-3 px-1 border-b-2 font-medium text-sm text-gray-400 hover:text-gray-200">
+                        Llegadas
+                    </button>
+                </nav>
+            </div>
+        </div>
+
+        <!-- Schedule List -->
+        <main id="schedule-container" class="px-4 pb-4 h-[60vh] overflow-y-auto">
+            <!-- Schedule items will be loaded here by JavaScript -->
+            <div id="loading-spinner" class="text-center p-8">
+                <p>Cargando horarios...</p>
+            </div>
+        </main>
+    </div>
+
+    <!-- Toast Notification -->
+    <div id="toast" class="fixed bottom-5 right-5 bg-blue-500 text-white py-2 px-4 rounded-lg shadow-lg text-sm opacity-0 transition-opacity duration-300">
+        Toast message
+    </div>
+    
+    <script>
+        // Register Service Worker for PWA
+        if ('serviceWorker' in navigator) {
+            window.addEventListener('load', () => {
+                navigator.serviceWorker.register('/sw.js').then(registration => {
+                    console.log('ServiceWorker registration successful with scope: ', registration.scope);
+                }, err => {
+                    console.log('ServiceWorker registration failed: ', err);
+                });
+            });
+        }
+
+        document.addEventListener('DOMContentLoaded', function () {
+            // --- CONFIGURACIÓN FINAL ---
+            // ⬇️ PEGA AQUÍ LA URL DE TU SERVIDOR DE RENDER ⬇️
+            // Debe ser la dirección que termina en ".onrender.com"
+            const API_URL = 'https://bsred.onrender.com/api/horarios';
+
+            // --- LÍNEA DE DEPURACIÓN ---
+            console.log('La aplicación está intentando conectar a esta URL:', API_URL);
+
+            const scheduleContainer = document.getElementById('schedule-container');
+            const searchInput = document.getElementById('search-input');
+            const loadingSpinner = document.getElementById('loading-spinner');
+            const offlineBanner = document.getElementById('offline-banner');
+            const toast = document.getElementById('toast');
+            
+            const tabSalidas = document.getElementById('tab-salidas');
+            const tabLlegadas = document.getElementById('tab-llegadas');
+            let currentTab = 'salida';
+            let allData = [];
+
+            function showToast(message) {
+                toast.textContent = message;
+                toast.classList.remove('opacity-0');
+                setTimeout(() => {
+                    toast.classList.add('opacity-0');
+                }, 3000);
+            }
+
+            function renderSchedule(data, filter = '') {
+                scheduleContainer.innerHTML = '';
+                const filteredData = data
+                    .filter(item => item.tipo === currentTab)
+                    .filter(item => {
+                        const searchTerm = filter.toLowerCase();
+                        return item.destino.toLowerCase().includes(searchTerm) ||
+                               item.origen.toLowerCase().includes(searchTerm) ||
+                               item.empresa.toLowerCase().includes(searchTerm);
+                    });
+
+                if (filteredData.length === 0) {
+                    scheduleContainer.innerHTML = `<div class="text-center text-gray-400 py-8">No se encontraron resultados.</div>`;
+                    return;
+                }
+
+                filteredData.forEach(item => {
+                    const statusClass = `status-${item.estado.toLowerCase().replace(/\s+/g, '-')}`;
+                    const card = `
+                        <div class="bg-gray-800 p-3 rounded-lg mb-3 shadow-md border-l-4 border-blue-500">
+                            <div class="flex justify-between items-center">
+                                <div class="font-bold text-lg">${item.empresa}</div>
+                                <div class="text-2xl font-bold text-white">${currentTab === 'salida' ? item.salida : item.llegada}</div>
+                            </div>
+                            <div class="text-sm text-gray-300 mt-1">
+                                ${currentTab === 'salida' ? `Destino: <strong>${item.destino}</strong>` : `Origen: <strong>${item.origen}</strong>`}
+                            </div>
+                            <div class="flex justify-between items-center mt-2 text-xs">
+                                <span class="px-2 py-1 text-xs font-semibold rounded-full ${statusClass}">${item.estado}</span>
+                                <span class="text-gray-400">Andén ${item.anden}</span>
+                                <button class="notify-btn" data-time="${currentTab === 'salida' ? item.salida : item.llegada}" data-destination="${currentTab === 'salida' ? item.destino : item.origen}">
+                                     <svg xmlns="http://www.w3.org/2000/svg" class="h-5 w-5 text-gray-400 hover:text-blue-400" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15 17h5l-1.405-1.405A2.032 2.032 0 0118 14.158V11a6 6 0 10-12 0v3.159c0 .538-.214 1.055-.595 1.436L4 17h5m6 0v1a3 3 0 11-6 0v-1m6 0H9" /></svg>
+                                </button>
+                            </div>
+                        </div>
+                    `;
+                    scheduleContainer.innerHTML += card;
+                });
+            }
+
+            async function fetchData() {
+                loadingSpinner.style.display = 'block';
+                offlineBanner.classList.add('hidden');
+                scheduleContainer.innerHTML = '';
+                try {
+                    if (API_URL.includes('TU-URL-DE-RENDER')) {
+                        throw new Error('La URL de la API no ha sido configurada.');
+                    }
+                    const response = await fetch(API_URL);
+                    if (!response.ok) {
+                        throw new Error(`Error del servidor! status: ${response.status}`);
+                    }
+                    allData = await response.json();
+                    renderSchedule(allData, searchInput.value);
+                } catch (error) {
+                    console.error('Error fetching data:', error);
+                    offlineBanner.textContent = `Error: ${error.message}. Asegúrate de que la URL de la API es correcta y que el servidor en Render está funcionando.`;
+                    offlineBanner.classList.remove('hidden');
+                    scheduleContainer.innerHTML = `<div class="text-center text-gray-400 py-8">No se pudieron cargar los horarios.</div>`;
+                } finally {
+                    loadingSpinner.style.display = 'none';
+                }
+            }
+
+            searchInput.addEventListener('input', () => {
+                renderSchedule(allData, searchInput.value);
+            });
+
+            tabSalidas.addEventListener('click', () => {
+                currentTab = 'salida';
+                tabSalidas.classList.add('tab-active', 'text-blue-500');
+                tabLlegadas.classList.remove('tab-active', 'text-blue-500');
+                tabLlegadas.classList.add('text-gray-400');
+                renderSchedule(allData, searchInput.value);
+            });
+
+            tabLlegadas.addEventListener('click', () => {
+                currentTab = 'llegada';
+                tabLlegadas.classList.add('tab-active', 'text-blue-500');
+                tabSalidas.classList.remove('tab-active', 'text-blue-500');
+                tabSalidas.classList.add('text-gray-400');
+                renderSchedule(allData, searchInput.value);
+            });
+            
+            const notificationBell = document.getElementById('notification-bell');
+            notificationBell.addEventListener('click', () => {
+                if ('Notification' in window) {
+                    Notification.requestPermission().then(permission => {
+                        if (permission === 'granted') {
+                            showToast("Las notificaciones están activadas.");
+                        } else {
+                            showToast("Las notificaciones fueron bloqueadas.");
+                        }
+                    });
+                } else {
+                    showToast("Este navegador no soporta notificaciones.");
+                }
+            });
+
+            scheduleContainer.addEventListener('click', function(event) {
+                const button = event.target.closest('.notify-btn');
+                if (!button) return;
+                
+                if (!('Notification' in window) || Notification.permission !== 'granted') {
+                    showToast("Activa las notificaciones primero.");
+                    return;
+                }
+
+                const time = button.dataset.time;
+                const destination = button.dataset.destination;
+                const messageBody = `El bus ${currentTab === 'salida' ? 'a' : 'de'} ${destination} está por partir/llegar.`;
+
+                const [hours, minutes] = time.split(':').map(Number);
+                const now = new Date();
+                const eventTime = new Date(now.getFullYear(), now.getMonth(), now.getDate(), hours, minutes, 0);
+
+                if (eventTime < now) {
+                   showToast("La hora de este evento ya pasó.");
+                   return;
+                }
+                
+                const timeout = eventTime.getTime() - now.getTime() - 30000;
+
+                if (timeout > 0) {
+                    setTimeout(() => {
+                        new Notification('¡Recordatorio!', {
+                            body: messageBody,
+                            icon: 'logo.jpg'
+                        });
+                    }, timeout);
+                    showToast(`Aviso para el bus (${destination}) programado.`);
+                } else {
+                    showToast("Falta muy poco para este evento.");
+                }
+            });
+
+            fetchData();
+        });
+    </script>
+</body>
+</html>
+
+
+
+
+
+
+

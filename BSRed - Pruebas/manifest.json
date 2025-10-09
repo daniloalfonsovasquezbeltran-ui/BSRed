@@ -1,0 +1,21 @@
+{
+    "name": "Horarios Buses Panguipulli",
+    "short_name": "HorariosBus",
+    "description": "Aplicación para consultar horarios de buses en el terminal de Panguipulli.",
+    "start_url": "/index.html",
+    "display": "standalone",
+    "background_color": "#111827",
+    "theme_color": "#111827",
+    "icons": [
+        {
+            "src": "logo_192.png",
+            "type": "image/png",
+            "sizes": "192x192"
+        },
+        {
+            "src": "logo_512.png",
+            "type": "image/png",
+            "sizes": "512x512"
+        }
+    ]
+}
