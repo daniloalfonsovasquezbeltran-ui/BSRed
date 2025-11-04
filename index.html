@@ -1,273 +1,306 @@
 <!DOCTYPE html>
 <html lang="es">
-
 <head>
-    <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Tótem Informativo - Buses Panguipulli</title>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
+  <title>Tótem – Buses Panguipulli</title>
 
-    <script src="https://cdn.tailwindcss.com"></script>
+  <script src="https://cdn.tailwindcss.com"></script>
 
-    <link rel="preconnect" href="https://fonts.googleapis.com">
-    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
-    
+  <link rel="preconnect" href="https://fonts.googleapis.com" />
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet" />
 
-    <link rel="manifest" href="manifest.json">
-  
-    <meta name="theme-color" content="#1f2937">
-    
-    <style>
-        body {
-            font-family: 'Inter', sans-serif;
-            background-color: #111827; 
-        }
-      
-        ::-webkit-scrollbar { width: 6px; }
-        ::-webkit-scrollbar-track { background: #1f2937; }
-        ::-webkit-scrollbar-thumb { background: #4b5563; border-radius: 3px; }
-        
-        .status-a-tiempo { background-color: #10B981; color: white; }
-        .status-retrasado { background-color: #F59E0B; color: white; }
-        .status-cancelado { background-color: #EF4444; color: white; }
-        .status-próximo { background-color: #3B82F6; color: white; }
+  <link rel="manifest" href="manifest.json" />
+  <meta name="theme-color" content="#0b1220"/>
 
-        .tab-active {
-            border-bottom-color: #3B82F6;
-            color: #3B82F6;
-        }
-    </style>
+  <style>
+    :root { color-scheme: dark; }
+    body { font-family: "Inter", system-ui, -apple-system, Segoe UI, Roboto, Ubuntu, Cantarell, "Helvetica Neue", Arial; background:#0b1220; }
+    /* Scrollbar */
+    ::-webkit-scrollbar{ width:8px } ::-webkit-scrollbar-track{ background:#0f172a } ::-webkit-scrollbar-thumb{ background:#334155; border-radius:8px }
+    /* Estado */
+    .pill{ padding:.15rem .5rem; border-radius:9999px; font-weight:600; font-size:.72rem }
+    .pill--tiempo{ background:#059669; color:#fff } .pill--retrasado{ background:#d97706; color:#fff }
+    .pill--cancelado{ background:#dc2626; color:#fff } .pill--proximo{ background:#2563eb; color:#fff }
+    /* Tabs */
+    .tab-active{ color:#60a5fa; border-color:#60a5fa }
+
+    /* --- Splash (pantalla de carga 1s) --- */
+    #splash {
+      position: fixed; inset: 0; display: grid; place-items: center;
+      background: radial-gradient(1200px 800px at 50% -20%, rgba(37,99,235,.18), transparent 60%) #0b1220;
+      z-index: 9999;
+    }
+    .spinner { width: 36px; height: 36px; border: 3px solid #1f2a44; border-top-color: #60a5fa; border-radius: 50%; animation: spin .8s linear infinite }
+    @keyframes spin { to { transform: rotate(360deg) } }
+  </style>
 </head>
 
-<body class="text-gray-200">
-    <div id="offline-banner" class="hidden bg-red-600 text-white text-center p-2 text-sm font-semibold">
-        Error de Conexión: No se pudo contactar al servidor. Revisa tu conexión o intenta más tarde.
+<body class="text-slate-200">
+  <!-- Splash -->
+  <div id="splash">
+    <div class="flex flex-col items-center gap-4">
+      <img src="logo.jpg" alt="Logo" class="h-14 w-14 rounded-xl object-cover shadow-lg" />
+      <div class="spinner"></div>
+      <p class="text-slate-400 text-sm">Cargando…</p>
     </div>
+  </div>
 
-    <div class="max-w-md mx-auto bg-[#1f2937] shadow-lg rounded-lg overflow-hidden my-4">
+  <!-- Banner offline -->
+  <div id="offline-banner" class="hidden sticky top-0 z-50 bg-rose-600 text-white text-center px-3 py-2 text-sm">
+    Sin conexión: revisa tu internet o intenta nuevamente.
+  </div>
 
-        <header class="flex items-center justify-between p-4 bg-gray-900 border-b border-gray-700">
-            <div class="flex items-center">
-                <img src="logo.jpg" alt="Logo" class="h-10 w-10 mr-3 rounded-md">
-                <div>
-                    <h1 class="text-lg font-bold text-white">Terminal Panguipulli</h1>
-                    <p class="text-xs text-gray-400">Horarios de Buses</p>
-                </div>
-            </div>
-            <button id="notification-bell" class="text-gray-400 hover:text-white">
-                <svg xmlns="http://www.w3.org/2000/svg" class="h-6 w-6" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15 17h5l-1.405-1.405A2.032 2.032 0 0118 14.158V11a6 6 0 10-12 0v3.159c0 .538-.214 1.055-.595 1.436L4 17h5m6 0v1a3 3 0 11-6 0v-1m6 0H9" />
-                </svg>
-            </button>
-        </header>
-
-     
-        <div class="p-4">
-            <input type="text" id="search-input" placeholder="Buscar por destino, origen o empresa..." class="w-full p-2 rounded-md bg-gray-700 text-white border border-gray-600 focus:outline-none focus:ring-2 focus:ring-blue-500">
-            
-            <div class="border-b border-gray-700 mt-4">
-                <nav class="-mb-px flex space-x-4" aria-label="Tabs">
-                    <button id="tab-salidas" class="whitespace-nowrap py-3 px-1 border-b-2 font-medium text-sm tab-active">
-                        Salidas
-                    </button>
-                    <button id="tab-llegadas" class="whitespace-nowrap py-3 px-1 border-b-2 font-medium text-sm text-gray-400 hover:text-gray-200">
-                        Llegadas
-                    </button>
-                </nav>
-            </div>
+  <!-- App (oculta hasta terminar el splash) -->
+  <div id="app" class="hidden max-w-lg mx-auto my-4 rounded-2xl overflow-hidden shadow-xl ring-1 ring-slate-800/40 bg-gradient-to-b from-slate-900 to-slate-950">
+    <!-- Header -->
+    <header class="sticky top-0 z-40 bg-slate-900/70 backdrop-blur border-b border-slate-800">
+      <div class="flex items-center justify-between px-4 py-3">
+        <div class="flex items-center gap-3">
+          <img src="logo.jpg" alt="Logo" class="h-10 w-10 rounded-md object-cover" />
+          <div>
+            <h1 class="text-base font-semibold leading-tight">Terminal Panguipulli</h1>
+            <p class="text-xs text-slate-400">Horarios de buses</p>
+          </div>
         </div>
+        <button id="notification-bell"
+          class="p-2 rounded-lg hover:bg-slate-800 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-sky-500"
+          aria-label="Activar notificaciones">
+          <svg xmlns="http://www.w3.org/2000/svg" class="h-5 w-5 text-slate-300" viewBox="0 0 24 24" fill="none" stroke="currentColor">
+            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2"
+              d="M15 17h5l-1.4-1.4A2 2 0 0118 14.2V11a6 6 0 10-12 0v3.2c0 .5-.2 1.1-.6 1.4L4 17h5m6 0v1a3 3 0 11-6 0v-1" />
+          </svg>
+        </button>
+      </div>
 
+      <div class="px-4 pb-3">
+        <label class="sr-only" for="search-input">Buscar por destino, origen o empresa</label>
+        <input id="search-input" type="search" inputmode="search" autocomplete="off"
+          placeholder="Buscar por destino, origen o empresa…"
+          class="w-full rounded-lg bg-slate-800 border border-slate-700 px-3 py-2 text-sm placeholder:text-slate-400 focus:outline-none focus:ring-2 focus:ring-sky-500" />
 
-        <main id="schedule-container" class="px-4 pb-4 h-[60vh] overflow-y-auto">
- 
-            <div id="loading-spinner" class="text-center p-8">
-                <p>Cargando horarios...</p>
-            </div>
-        </main>
-    </div>
+        <div class="mt-3 border-b border-slate-800" role="tablist" aria-label="Tipo de horario">
+          <div class="flex gap-4">
+            <button id="tab-salidas" role="tab" aria-selected="true" aria-controls="panel-salidas" tabindex="0"
+              class="py-3 text-sm font-medium border-b-2 border-transparent text-slate-300 tab-active">
+              Salidas
+            </button>
+            <button id="tab-llegadas" role="tab" aria-selected="false" aria-controls="panel-llegadas" tabindex="-1"
+              class="py-3 text-sm font-medium border-b-2 border-transparent text-slate-400 hover:text-slate-200">
+              Llegadas
+            </button>
+          </div>
+        </div>
+      </div>
+    </header>
 
+    <!-- Contenido -->
+    <main class="px-4 pb-5">
+      <section id="schedule-container" class="h-[66vh] overflow-y-auto scroll-smooth" aria-live="polite">
+        <!-- Skeleton inicial (se muestra tras splash si aún no hay datos) -->
+        <div id="skeleton" class="grid gap-3 py-4">
+          <div class="animate-pulse rounded-xl bg-slate-800 h-20"></div>
+          <div class="animate-pulse rounded-xl bg-slate-800 h-20"></div>
+          <div class="animate-pulse rounded-xl bg-slate-800 h-20"></div>
+        </div>
+        <div id="list" class="hidden"></div>
+      </section>
 
-    <div id="toast" class="fixed bottom-5 right-5 bg-blue-500 text-white py-2 px-4 rounded-lg shadow-lg text-sm opacity-0 transition-opacity duration-300">
-        Toast message
-    </div>
-    
-    <script>
+      <div id="empty" class="hidden py-10 text-center text-slate-400">No se encontraron resultados.</div>
+      <div id="error" class="hidden py-6 text-center">
+        <p class="text-rose-400 font-medium">No se pudieron cargar los horarios.</p>
+        <button id="retry" class="mt-3 inline-flex items-center gap-2 rounded-lg bg-sky-600 hover:bg-sky-500 px-3 py-2 text-sm font-semibold">
+          Reintentar
+          <svg xmlns="http://www.w3.org/2000/svg" class="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 4v6h6M20 20v-6h-6M5 19A9 9 0 0119 5" />
+          </svg>
+        </button>
+      </div>
+    </main>
+  </div>
 
-        if ('serviceWorker' in navigator) {
-            window.addEventListener('load', () => {
-                navigator.serviceWorker.register('/sw.js').then(registration => {
-                    console.log('ServiceWorker registration successful with scope: ', registration.scope);
-                }, err => {
-                    console.log('ServiceWorker registration failed: ', err);
-                });
-            });
+  <!-- Toast -->
+  <div id="toast" class="pointer-events-none fixed inset-x-0 bottom-6 mx-auto w-fit rounded-lg bg-sky-600/95 text-white py-2 px-4 text-sm shadow-lg opacity-0 transition-opacity">
+    &nbsp;
+  </div>
+
+  <script>
+    // ===== CONFIG =====
+    const API_URL = "https://bsred.onrender.com/api/horarios"; // ajusta si cambia
+    const USE_12H = false; // true para formato 12h
+
+    // ===== Helpers =====
+    const $ = s => document.querySelector(s);
+    const on = (el, ev, cb) => el.addEventListener(ev, cb);
+    const toast = (msg) => { const t=$("#toast"); t.textContent=msg; t.classList.remove("opacity-0"); setTimeout(()=>t.classList.add("opacity-0"), 2200); };
+    const pad2 = n => String(n).padStart(2,"0");
+    const parse24h = t => { const [h,m]=(t||"").split(":").map(Number); return Number.isFinite(h)&&Number.isFinite(m)?{h,m}:null; };
+    const fmtTime = t => { const x=parse24h(t); if(!x) return t; if(!USE_12H) return `${pad2(x.h)}:${pad2(x.m)}`; const ampm=x.h>=12?"PM":"AM"; const h12=x.h%12||12; return `${h12}:${pad2(x.m)} ${ampm}`; };
+    const toStatusPill = (e) => ({ "atiempo":"pill pill--tiempo","retrasado":"pill pill--retrasado","cancelado":"pill pill--cancelado","próximo":"pill pill--proximo","proximo":"pill pill--proximo" }[(e||"").toLowerCase()] || "pill pill--tiempo");
+    const debounce = (fn,ms=250)=>{ let id; return (...a)=>{ clearTimeout(id); id=setTimeout(()=>fn(...a),ms); }; };
+
+    // ===== SW opcional =====
+    if ("serviceWorker" in navigator) {
+      window.addEventListener("load", () => {
+        navigator.serviceWorker.register("/sw.js").catch(()=>{});
+      });
+    }
+
+    // ===== App =====
+    (function(){
+      const splash = $("#splash");
+      const app = $("#app");
+      const listEl = $("#list");
+      const skel = $("#skeleton");
+      const searchEl = $("#search-input");
+      const offline = $("#offline-banner");
+      const tabSalidas = $("#tab-salidas");
+      const tabLlegadas = $("#tab-llegadas");
+
+      let currentTab = localStorage.getItem("tab") || "salida";
+      let allData = [];
+      let term = localStorage.getItem("search") || "";
+      searchEl.value = term;
+
+      // Tabs
+      const setTab = (t) => {
+        currentTab = t; localStorage.setItem("tab", t);
+        const active = t==="salida"?tabSalidas:tabLlegadas;
+        const inactive = t==="salida"?tabLlegadas:tabSalidas;
+        active.classList.add("tab-active"); active.setAttribute("aria-selected","true"); active.tabIndex=0;
+        inactive.classList.remove("tab-active"); inactive.setAttribute("aria-selected","false"); inactive.tabIndex=-1;
+        render();
+      };
+      on(tabSalidas,"click",()=>setTab("salida"));
+      on(tabLlegadas,"click",()=>setTab("llegada"));
+      on(tabSalidas,"keydown",e=>{ if(e.key==="ArrowRight") tabLlegadas.click();});
+      on(tabLlegadas,"keydown",e=>{ if(e.key==="ArrowLeft") tabSalidas.click();});
+
+      // Notificaciones
+      on($("#notification-bell"),"click",()=>{
+        if ("Notification" in window) {
+          Notification.requestPermission().then(p=>toast(p==="granted"?"Notificaciones activadas":"Notificaciones bloqueadas"));
+        } else if (typeof Android!=="undefined" && typeof Android.notify==="function") {
+          Android.notify("Notificaciones activadas"); toast("Notificaciones activadas");
+        } else { toast("Este entorno no soporta notificaciones"); }
+      });
+
+      // Búsqueda
+      on(searchEl,"input",debounce(()=>{
+        term = searchEl.value.trim(); localStorage.setItem("search", term); render();
+      },250));
+
+      // Reintento
+      on($("#retry"),"click",()=>load());
+
+      // Click recordatorio por tarjeta
+      on($("#schedule-container"),"click",(e)=>{
+        const btn = e.target.closest(".notify-btn"); if(!btn) return;
+        const time = btn.dataset.time, city = btn.dataset.city;
+        const label = currentTab==="salida"?"a":"de";
+        const t = parse24h(time); if(!t) return toast("Hora inválida");
+        const now=new Date();
+        const ev=new Date(now.getFullYear(), now.getMonth(), now.getDate(), t.h, t.m, 0);
+        if (ev<now) return toast("La hora ya pasó");
+        const ms = ev-now-30000; if (ms<=0) return toast("Falta muy poco");
+        const notify=()=>{ if("Notification" in window && Notification.permission==="granted"){ new Notification("Recordatorio",{body:`El bus ${label} ${city} está por ${currentTab==="salida"?"partir":"llegar"}.`, icon:"logo.jpg"}); } else if(typeof Android!=="undefined" && Android.notify){ Android.notify(`El bus ${label} ${city} está por ${currentTab==="salida"?"partir":"llegar"}.`);} else { toast("Activa notificaciones para recordatorios"); } };
+        setTimeout(notify, ms); toast(`Aviso programado para ${city}`);
+      });
+
+      function render(){
+        if (!allData.length) return;
+        const filtered = allData
+          .filter(x => x.tipo === currentTab)
+          .filter(x => {
+            if (!term) return true;
+            const t = term.toLowerCase();
+            return (x.destino||"").toLowerCase().includes(t) || (x.origen||"").toLowerCase().includes(t) || (x.empresa||"").toLowerCase().includes(t);
+          });
+
+        if (!filtered.length){
+          listEl.innerHTML = ""; skel.classList.add("hidden");
+          $("#empty").classList.remove("hidden"); $("#error").classList.add("hidden");
+          return;
         }
 
-        document.addEventListener('DOMContentLoaded', function () {
- 
-            const API_URL = 'https://bsred.onrender.com/api/horarios';
+        listEl.innerHTML = filtered.map(item=>{
+          const time = currentTab==="salida" ? item.salida : item.llegada;
+          const city = currentTab==="salida" ? item.destino : item.origen;
+          const pill = toStatusPill(item.estado);
+          return `
+            <article class="rounded-xl bg-slate-900/70 border border-slate-800 px-3 py-3 mb-3">
+              <div class="flex items-center justify-between gap-2">
+                <div class="min-w-0">
+                  <div class="truncate font-semibold">${item.empresa || "—"}</div>
+                  <div class="text-xs text-slate-400 mt-0.5">
+                    ${currentTab==="salida" ? "Destino" : "Origen"}:
+                    <span class="font-medium text-slate-300">${city || "—"}</span>
+                  </div>
+                </div>
+                <div class="text-right">
+                  <div class="text-2xl font-bold tabular-nums">${fmtTime(time)}</div>
+                  <div class="mt-1 flex items-center justify-end gap-2">
+                    <span class="${pill}">${item.estado || "A tiempo"}</span>
+                    <span class="text-xs text-slate-400">Andén ${item.anden ?? "—"}</span>
+                    <button class="notify-btn p-2 rounded-md hover:bg-slate-800" title="Recordarme"
+                      data-time="${time}" data-city="${city}">
+                      <svg xmlns="http://www.w3.org/2000/svg" class="h-4 w-4 text-slate-300" viewBox="0 0 24 24" fill="none" stroke="currentColor">
+                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2"
+                          d="M15 17h5l-1.4-1.4A2 2 0 0118 14.2V11a6 6 0 10-12 0v3.2c0 .5-.2 1.1-.6 1.4L4 17h5m6 0v1a3 3 0 11-6 0v-1" />
+                      </svg>
+                    </button>
+                  </div>
+                </div>
+              </div>
+            </article>
+          `;
+        }).join("");
 
-        
-            console.log('La aplicación está intentando conectar a esta URL:', API_URL);
+        $("#empty").classList.add("hidden"); $("#error").classList.add("hidden");
+        skel.classList.add("hidden"); listEl.classList.remove("hidden");
+      }
 
-            const scheduleContainer = document.getElementById('schedule-container');
-            const searchInput = document.getElementById('search-input');
-            const loadingSpinner = document.getElementById('loading-spinner');
-            const offlineBanner = document.getElementById('offline-banner');
-            const toast = document.getElementById('toast');
-            
-            const tabSalidas = document.getElementById('tab-salidas');
-            const tabLlegadas = document.getElementById('tab-llegadas');
-            let currentTab = 'salida';
-            let allData = [];
+      async function load(){
+        try{
+          offline.classList.add("hidden");
+          const res = await fetch(API_URL, { cache:"no-store" });
+          if (!res.ok) throw new Error(`HTTP ${res.status}`);
+          allData = await res.json();
+          render();
+        }catch(err){
+          console.error(err);
+          $("#error").querySelector("p").textContent = "Error al cargar horarios. " + (err?.message || "");
+          $("#error").classList.remove("hidden");
+          $("#empty").classList.add("hidden");
+          $("#list").classList.add("hidden");
+          $("#skeleton").classList.add("hidden");
+          if (!navigator.onLine) offline.classList.remove("hidden");
+        }
+      }
 
-            function showToast(message) {
-                toast.textContent = message;
-                toast.classList.remove('opacity-0');
-                setTimeout(() => {
-                    toast.classList.add('opacity-0');
-                }, 3000);
-            }
+      // ---- Splash de 1 segundo (mínimo) ----
+      const minDelay = new Promise(res => setTimeout(res, 1000));
+      const start = (async ()=>{
+        // empezamos a cargar datos mientras está el splash
+        const fetchPromise = load();
+        // esperamos el mínimo de 1s y la primera carga (si falla igual mostramos UI)
+        await Promise.race([minDelay]); // garantiza 1s; no bloquea fetch
+        splash.remove();
+        app.classList.remove("hidden");
+        // si aún no hay datos, queda el skeleton activo
+        return fetchPromise;
+      })();
 
-            function renderSchedule(data, filter = '') {
-                scheduleContainer.innerHTML = '';
-                const filteredData = data
-                    .filter(item => item.tipo === currentTab)
-                    .filter(item => {
-                        const searchTerm = filter.toLowerCase();
-                        return item.destino.toLowerCase().includes(searchTerm) ||
-                               item.origen.toLowerCase().includes(searchTerm) ||
-                               item.empresa.toLowerCase().includes(searchTerm);
-                    });
+      // Estado online/offline
+      on(window, "online",  () => { offline.classList.add("hidden"); toast("Conectado"); });
+      on(window, "offline", () => { offline.classList.remove("hidden"); toast("Sin conexión"); });
 
-                if (filteredData.length === 0) {
-                    scheduleContainer.innerHTML = `<div class="text-center text-gray-400 py-8">No se encontraron resultados.</div>`;
-                    return;
-                }
-
-                filteredData.forEach(item => {
-                    const statusClass = `status-${item.estado.toLowerCase().replace(/\s+/g, '-')}`;
-                    const card = `
-                        <div class="bg-gray-800 p-3 rounded-lg mb-3 shadow-md border-l-4 border-blue-500">
-                            <div class="flex justify-between items-center">
-                                <div class="font-bold text-lg">${item.empresa}</div>
-                                <div class="text-2xl font-bold text-white">${currentTab === 'salida' ? item.salida : item.llegada}</div>
-                            </div>
-                            <div class="text-sm text-gray-300 mt-1">
-                                ${currentTab === 'salida' ? `Destino: <strong>${item.destino}</strong>` : `Origen: <strong>${item.origen}</strong>`}
-                            </div>
-                            <div class="flex justify-between items-center mt-2 text-xs">
-                                <span class="px-2 py-1 text-xs font-semibold rounded-full ${statusClass}">${item.estado}</span>
-                                <span class="text-gray-400">Andén ${item.anden}</span>
-                                <button class="notify-btn" data-time="${currentTab === 'salida' ? item.salida : item.llegada}" data-destination="${currentTab === 'salida' ? item.destino : item.origen}">
-                                     <svg xmlns="http://www.w3.org/2000/svg" class="h-5 w-5 text-gray-400 hover:text-blue-400" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15 17h5l-1.405-1.405A2.032 2.032 0 0118 14.158V11a6 6 0 10-12 0v3.159c0 .538-.214 1.055-.595 1.436L4 17h5m6 0v1a3 3 0 11-6 0v-1m6 0H9" /></svg>
-                                </button>
-                            </div>
-                        </div>
-                    `;
-                    scheduleContainer.innerHTML += card;
-                });
-            }
-
-            async function fetchData() {
-                loadingSpinner.style.display = 'block';
-                offlineBanner.classList.add('hidden');
-                scheduleContainer.innerHTML = '';
-                try {
-                    if (API_URL.includes('TU-URL-DE-RENDER')) {
-                        throw new Error('La URL de la API no ha sido configurada.');
-                    }
-                    const response = await fetch(API_URL);
-                    if (!response.ok) {
-                        throw new Error(`Error del servidor! status: ${response.status}`);
-                    }
-                    allData = await response.json();
-                    renderSchedule(allData, searchInput.value);
-                } catch (error) {
-                    console.error('Error fetching data:', error);
-                    offlineBanner.textContent = `Error: ${error.message}. Asegúrate de que la URL de la API es correcta y que el servidor en Render está funcionando.`;
-                    offlineBanner.classList.remove('hidden');
-                    scheduleContainer.innerHTML = `<div class="text-center text-gray-400 py-8">No se pudieron cargar los horarios.</div>`;
-                } finally {
-                    loadingSpinner.style.display = 'none';
-                }
-            }
-
-            searchInput.addEventListener('input', () => {
-                renderSchedule(allData, searchInput.value);
-            });
-
-            tabSalidas.addEventListener('click', () => {
-                currentTab = 'salida';
-                tabSalidas.classList.add('tab-active', 'text-blue-500');
-                tabLlegadas.classList.remove('tab-active', 'text-blue-500');
-                tabLlegadas.classList.add('text-gray-400');
-                renderSchedule(allData, searchInput.value);
-            });
-
-            tabLlegadas.addEventListener('click', () => {
-                currentTab = 'llegada';
-                tabLlegadas.classList.add('tab-active', 'text-blue-500');
-                tabSalidas.classList.remove('tab-active', 'text-blue-500');
-                tabSalidas.classList.add('text-gray-400');
-                renderSchedule(allData, searchInput.value);
-            });
-            
-            const notificationBell = document.getElementById('notification-bell');
-            notificationBell.addEventListener('click', () => {
-                if ('Notification' in window) {
-                    Notification.requestPermission().then(permission => {
-                        if (permission === 'granted') {
-                            showToast("Las notificaciones están activadas.");
-                        } else {
-                            showToast("Las notificaciones fueron bloqueadas.");
-                        }
-                    });
-                } else {
-                    showToast("Este navegador no soporta notificaciones.");
-                }
-            });
-
-            scheduleContainer.addEventListener('click', function(event) {
-                const button = event.target.closest('.notify-btn');
-                if (!button) return;
-                
-                if (!('Notification' in window) || Notification.permission !== 'granted') {
-                    showToast("Activa las notificaciones primero.");
-                    return;
-                }
-
-                const time = button.dataset.time;
-                const destination = button.dataset.destination;
-                const messageBody = `El bus ${currentTab === 'salida' ? 'a' : 'de'} ${destination} está por partir/llegar.`;
-
-                const [hours, minutes] = time.split(':').map(Number);
-                const now = new Date();
-                const eventTime = new Date(now.getFullYear(), now.getMonth(), now.getDate(), hours, minutes, 0);
-
-                if (eventTime < now) {
-                   showToast("La hora de este evento ya pasó.");
-                   return;
-                }
-                
-                const timeout = eventTime.getTime() - now.getTime() - 30000;
-
-                if (timeout > 0) {
-                    setTimeout(() => {
-                        new Notification('¡Recordatorio!', {
-                            body: messageBody,
-                            icon: 'logo.jpg'
-                        });
-                    }, timeout);
-                    showToast(`Aviso para el bus (${destination}) programado.`);
-                } else {
-                    showToast("Falta muy poco para este evento.");
-                }
-            });
-
-            fetchData();
-        });
-    </script>
+      // Iniciar tab
+      setTab(currentTab);
+      void start;
+    })();
+  </script>
 </body>
 </html>
 
