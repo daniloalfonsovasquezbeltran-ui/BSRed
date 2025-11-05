@@ -1,36 +1,41 @@
-const CACHE_NAME = 'horarios-buses-panguipulli-v1';
-const assetsToCache = [
-    '/',
-    '/index.html',
-    '/logo.jpg',
-    'https://cdn.tailwindcss.com',
-    'https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap'
+// Service Worker simple: cache-first para shell y network-first para API
+const CACHE = 'bsred-v1';
+const ASSETS = [
+  '/', '/index.html', '/logo.jpg',
+  'https://cdn.tailwindcss.com'
 ];
 
-// Install event: cache all the main assets
-self.addEventListener('install', event => {
-    event.waitUntil(
-        caches.open(CACHE_NAME)
-            .then(cache => {
-                console.log('Opened cache');
-                return cache.addAll(assetsToCache);
-            })
-    );
+self.addEventListener('install', e=>{
+  e.waitUntil(caches.open(CACHE).then(c=>c.addAll(ASSETS)));
+  self.skipWaiting();
 });
 
-// Fetch event: serve from cache if available, otherwise fetch from network
-self.addEventListener('fetch', event => {
-    event.respondWith(
-        caches.match(event.request)
-            .then(response => {
-                // Cache hit - return response
-                if (response) {
-                    return response;
-                }
-                // Not in cache - fetch from network
-                return fetch(event.request);
-            })
-    );
+self.addEventListener('activate', e=>{
+  e.waitUntil(
+    caches.keys().then(keys=>Promise.all(
+      keys.filter(k=>k!==CACHE).map(k=>caches.delete(k))
+    ))
+  );
+  self.clients.claim();
 });
 
+self.addEventListener('fetch', e=>{
+  const url = new URL(e.request.url);
 
+  // API: network-first con fallback a cache
+  if (url.pathname.includes('/api/horarios')) {
+    e.respondWith(
+      fetch(e.request).then(res=>{
+        const copy = res.clone();
+        caches.open(CACHE).then(c=>c.put(e.request, copy));
+        return res;
+      }).catch(()=> caches.match(e.request))
+    );
+    return;
+  }
+
+  // Estáticos: cache-first
+  e.respondWith(
+    caches.match(e.request).then(res=> res || fetch(e.request))
+  );
+});
