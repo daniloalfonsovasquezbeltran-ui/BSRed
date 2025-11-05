@@ -1,140 +1,119 @@
-from flask import Flask, jsonify, send_from_directory
-from flask_cors import CORS
-import os
+# app.py
+# Flask que sirve index.html (sin cambiarlo) y entrega /api/horarios en JSON
 
-app = Flask(__name__)
-CORS(app)
+from flask import Flask, jsonify, request, send_from_directory, make_response
+from datetime import datetime
 
-# =====================================================
-# HORARIOS COMPLETOS – TERMINAL DE PANGUIPULLI
-# =====================================================
+# Sirve archivos estáticos desde la RAÍZ del repo (donde está index.html)
+app = Flask(__name__, static_folder='.', static_url_path='')
 
-horarios = [
-    # -------------------------------
-    # VALDIVIA (Buses Pirehueico)
-    # -------------------------------
-    {"empresa": "Buses Pirehueico", "destino": "Valdivia", "salida": "06:00", "llegada": "08:15"},
-    {"empresa": "Buses Pirehueico", "destino": "Valdivia", "salida": "06:45", "llegada": "08:55"},
-    {"empresa": "Buses Pirehueico", "destino": "Valdivia", "salida": "07:30", "llegada": "09:45"},
-    {"empresa": "Buses Pirehueico", "destino": "Valdivia", "salida": "09:00", "llegada": "11:15"},
-    {"empresa": "Buses Pirehueico", "destino": "Valdivia", "salida": "10:30", "llegada": "12:45"},
-    {"empresa": "Buses Pirehueico", "destino": "Valdivia", "salida": "12:00", "llegada": "14:10"},
-    {"empresa": "Buses Pirehueico", "destino": "Valdivia", "salida": "13:30", "llegada": "15:45"},
-    {"empresa": "Buses Pirehueico", "destino": "Valdivia", "salida": "15:00", "llegada": "17:10"},
-    {"empresa": "Buses Pirehueico", "destino": "Valdivia", "salida": "16:30", "llegada": "18:45"},
-    {"empresa": "Buses Pirehueico", "destino": "Valdivia", "salida": "18:00", "llegada": "20:15"},
-    {"empresa": "Buses Pirehueico", "destino": "Valdivia", "salida": "19:15", "llegada": "21:30"},
+# ------- Rutas de archivos estáticos y página ---------
+@app.route('/')
+def root():
+    # Muestra tu index.html tal cual, sin cambios visuales
+    return send_from_directory(app.static_folder, 'index.html')
 
-    # -------------------------------
-    # SANTIAGO (Pullman / Luna Express)
-    # -------------------------------
-    {"empresa": "Pullman Bus", "destino": "Santiago", "salida": "20:30", "llegada": "07:00"},
-    {"empresa": "Luna Express", "destino": "Santiago", "salida": "21:00", "llegada": "07:30"},
-    {"empresa": "Pullman Bus", "destino": "Panguipulli", "salida": "Santiago 21:30", "llegada": "09:20"},
-    {"empresa": "Luna Express", "destino": "Panguipulli", "salida": "Santiago 22:15", "llegada": "09:45"},
+# Si tu index.html referencia /manifest.json, /sw.js, /logo.png, etc.,
+# Flask los servirá automáticamente desde la raíz por ser static_folder='.'
 
-    # -------------------------------
-    # TEMUCO (Regional Sur)
-    # -------------------------------
-    {"empresa": "Regional Sur", "destino": "Temuco", "salida": "07:30", "llegada": "10:00"},
-    {"empresa": "Regional Sur", "destino": "Temuco", "salida": "09:45", "llegada": "12:10"},
-    {"empresa": "Regional Sur", "destino": "Temuco", "salida": "13:15", "llegada": "15:45"},
-    {"empresa": "Regional Sur", "destino": "Temuco", "salida": "17:30", "llegada": "20:00"},
-    {"empresa": "Regional Sur", "destino": "Panguipulli", "salida": "Temuco 06:00", "llegada": "08:30"},
-    {"empresa": "Regional Sur", "destino": "Panguipulli", "salida": "Temuco 09:30", "llegada": "12:00"},
-    {"empresa": "Regional Sur", "destino": "Panguipulli", "salida": "Temuco 14:00", "llegada": "16:30"},
-    {"empresa": "Regional Sur", "destino": "Panguipulli", "salida": "Temuco 17:00", "llegada": "19:20"},
 
-    # -------------------------------
-    # COÑARIPE (Buses Coñaripe)
-    # -------------------------------
-    {"empresa": "Buses Coñaripe", "destino": "Coñaripe", "salida": "06:30", "llegada": "07:25"},
-    {"empresa": "Buses Coñaripe", "destino": "Coñaripe", "salida": "08:00", "llegada": "08:55"},
-    {"empresa": "Buses Coñaripe", "destino": "Coñaripe", "salida": "10:30", "llegada": "11:25"},
-    {"empresa": "Buses Coñaripe", "destino": "Coñaripe", "salida": "13:00", "llegada": "13:55"},
-    {"empresa": "Buses Coñaripe", "destino": "Coñaripe", "salida": "17:30", "llegada": "18:25"},
-    {"empresa": "Buses Coñaripe", "destino": "Panguipulli", "salida": "Coñaripe 07:40", "llegada": "08:35"},
-    {"empresa": "Buses Coñaripe", "destino": "Panguipulli", "salida": "Coñaripe 12:00", "llegada": "12:55"},
-    {"empresa": "Buses Coñaripe", "destino": "Panguipulli", "salida": "Coñaripe 18:00", "llegada": "18:55"},
-
-    # -------------------------------
-    # VILLARRICA (Buses Villarrica)
-    # -------------------------------
-    {"empresa": "Buses Villarrica", "destino": "Villarrica", "salida": "06:45", "llegada": "08:20"},
-    {"empresa": "Buses Villarrica", "destino": "Villarrica", "salida": "11:15", "llegada": "12:50"},
-    {"empresa": "Buses Villarrica", "destino": "Villarrica", "salida": "15:45", "llegada": "17:20"},
-    {"empresa": "Buses Villarrica", "destino": "Panguipulli", "salida": "Villarrica 09:00", "llegada": "10:35"},
-    {"empresa": "Buses Villarrica", "destino": "Panguipulli", "salida": "Villarrica 13:30", "llegada": "15:05"},
-    {"empresa": "Buses Villarrica", "destino": "Panguipulli", "salida": "Villarrica 18:00", "llegada": "19:35"},
-
-    # -------------------------------
-    # LOS LAGOS (Regional Sur / TurBus)
-    # -------------------------------
-    {"empresa": "Turbus", "destino": "Los Lagos", "salida": "09:15", "llegada": "10:00"},
-    {"empresa": "Regional Sur", "destino": "Los Lagos", "salida": "14:00", "llegada": "14:45"},
-    {"empresa": "Turbus", "destino": "Panguipulli", "salida": "Los Lagos 08:00", "llegada": "08:45"},
-    {"empresa": "Regional Sur", "destino": "Panguipulli", "salida": "Los Lagos 13:00", "llegada": "13:45"},
-
-    # -------------------------------
-    # LIQUIÑE (Buses Liquiñe)
-    # -------------------------------
-    {"empresa": "Buses Liquiñe", "destino": "Liquiñe", "salida": "08:00", "llegada": "09:30"},
-    {"empresa": "Buses Liquiñe", "destino": "Liquiñe", "salida": "14:15", "llegada": "15:45"},
-    {"empresa": "Buses Liquiñe", "destino": "Liquiñe", "salida": "17:50", "llegada": "19:20"},
-    {"empresa": "Buses Liquiñe", "destino": "Panguipulli", "salida": "Liquiñe 06:30", "llegada": "08:00"},
-    {"empresa": "Buses Liquiñe", "destino": "Panguipulli", "salida": "Liquiñe 12:00", "llegada": "13:30"},
-
-    # -------------------------------
-    # NELTUME (Buses LAFIT)
-    # -------------------------------
-    {"empresa": "Buses Lafit", "destino": "Neltume", "salida": "07:00", "llegada": "09:00"},
-    {"empresa": "Buses Lafit", "destino": "Neltume", "salida": "13:30", "llegada": "15:30"},
-    {"empresa": "Buses Lafit", "destino": "Panguipulli", "salida": "Neltume 10:30", "llegada": "12:30"},
-    {"empresa": "Buses Lafit", "destino": "Panguipulli", "salida": "Neltume 16:45", "llegada": "18:45"},
-
-    # -------------------------------
-    # PUERTO FUY (rural)
-    # -------------------------------
-    {"empresa": "Rural Puerto Fuy", "destino": "Puerto Fuy", "salida": "11:00", "llegada": "12:20"},
-    {"empresa": "Rural Puerto Fuy", "destino": "Puerto Fuy", "salida": "17:00", "llegada": "18:20"},
-    {"empresa": "Rural Puerto Fuy", "destino": "Panguipulli", "salida": "Puerto Fuy 06:15", "llegada": "07:35"},
-    {"empresa": "Rural Puerto Fuy", "destino": "Panguipulli", "salida": "Puerto Fuy 14:00", "llegada": "15:20"},
-
-    # -------------------------------
-    # HURQUEHUE (rural)
-    # -------------------------------
-    {"empresa": "Rural Hurquehue", "destino": "Hurquehue", "salida": "12:30", "llegada": "13:10"},
-    {"empresa": "Rural Hurquehue", "destino": "Hurquehue", "salida": "16:45", "llegada": "17:25"},
-    {"empresa": "Rural Hurquehue", "destino": "Panguipulli", "salida": "Hurquehue 06:30", "llegada": "07:10"},
-    {"empresa": "Rural Hurquehue", "destino": "Panguipulli", "salida": "Hurquehue 14:15", "llegada": "14:55"}
+# ------- API de horarios (JSON) ---------
+# Estructura de ejemplo: ajusta/expande más tarde con tus datos reales
+HORARIOS = [
+    # Ejemplos mínimos para que el frontend no quede en blanco.
+    # Puedes reemplazar/expandir con tus horarios reales cuando quieras.
+    {
+        "sector": "Panguipulli",
+        "origen": "Panguipulli",
+        "destino": "Terminal Panguipulli",
+        "empresa": "Por confirmar",
+        "salida": "07:00",
+        "llegada": "07:20",
+        "dias": "Lunes a Viernes"
+    },
+    {
+        "sector": "Coñaripe",
+        "origen": "Panguipulli",
+        "destino": "Coñaripe",
+        "empresa": "Por confirmar",
+        "salida": "08:30",
+        "llegada": "09:40",
+        "dias": "Diario"
+    },
+    {
+        "sector": "Los Lagos",
+        "origen": "Panguipulli",
+        "destino": "Los Lagos",
+        "empresa": "Por confirmar",
+        "salida": "10:00",
+        "llegada": "10:50",
+        "dias": "Lunes a Sábado"
+    },
+    {
+        "sector": "Villarrica",
+        "origen": "Panguipulli",
+        "destino": "Villarrica",
+        "empresa": "Por confirmar",
+        "salida": "12:00",
+        "llegada": "13:40",
+        "dias": "Diario"
+    },
+    {
+        "sector": "Huerquehue",
+        "origen": "Panguipulli",
+        "destino": "Huerquehue",
+        "empresa": "Por confirmar",
+        "salida": "06:45",
+        "llegada": "07:30",
+        "dias": "Lunes a Viernes"
+    },
 ]
 
-# =====================================================
-# RUTAS PARA FRONTEND Y JSON
-# =====================================================
+def filtrar(hs, q, campo):
+    if not q:
+        return hs
+    q = q.strip().lower()
+    return [h for h in hs if h.get(campo, "").lower() == q or q in h.get(campo, "").lower()]
 
-@app.route("/")
-def index():
-    return send_from_directory(os.getcwd(), "index.html")
+@app.route('/api/horarios', methods=['GET'])
+def api_horarios():
+    """
+    Devuelve JSON con los horarios.
+    Filtros opcionales por querystring:
+      ?sector=Coñaripe&origen=Panguipulli&destino=Villarrica&empresa=...
+    """
+    data = HORARIOS[:]
+    data = filtrar(data, request.args.get('sector'), 'sector')
+    data = filtrar(data, request.args.get('origen'), 'origen')
+    data = filtrar(data, request.args.get('destino'), 'destino')
+    data = filtrar(data, request.args.get('empresa'), 'empresa')
 
-@app.route("/horarios")
-def get_horarios():
-    return jsonify(horarios)
+    payload = {
+        "terminal": "Terminal Panguipulli",
+        "actualizado": datetime.now().isoformat(timespec='seconds'),
+        "total": len(data),
+        "items": data
+    }
+    return jsonify(payload)
 
-@app.route("/salidas")
-def get_salidas():
-    return jsonify([h for h in horarios if "Panguipulli" not in h["destino"]])
+# ------- Salud y CORS básicos ---------
+@app.route('/healthz')
+def healthz():
+    return jsonify({"ok": True}), 200
 
-@app.route("/llegadas")
-def get_llegadas():
-    return jsonify([h for h in horarios if "Panguipulli" in h["destino"]])
+@app.after_request
+def add_cors_headers(resp):
+    # Permite que tu index.html consuma /api/horarios incluso si se carga estático
+    resp.headers['Access-Control-Allow-Origin'] = '*'
+    resp.headers['Access-Control-Allow-Methods'] = 'GET, OPTIONS'
+    resp.headers['Access-Control-Allow-Headers'] = 'Content-Type'
+    # Evita cache agresivo en respuestas API mientras desarrollas
+    if request.path.startswith('/api/'):
+        resp.headers['Cache-Control'] = 'no-store'
+    return resp
 
-# ⚠️ ESTA RUTA DEBE IR AL FINAL SIEMPRE (sirve archivos estáticos)
-@app.route("/<path:path>")
-def static_files(path):
-    return send_from_directory(os.getcwd(), path)
-
-
-if __name__ == "__main__":
-    app.run(debug=True)
+# ------- Run local -------
+if __name__ == '__main__':
+    # host='0.0.0.0' para que funcione en Render/Docker también
+    app.run(host='0.0.0.0', port=5000, debug=True)
     
