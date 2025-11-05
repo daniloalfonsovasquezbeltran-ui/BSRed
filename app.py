@@ -1,60 +1,156 @@
-from flask import Flask, jsonify, send_from_directory
+from flask import Flask, jsonify, render_template
 from flask_cors import CORS
-import os
-from datetime import datetime
 
 app = Flask(__name__)
 CORS(app)
 
+# =====================================================
+# HORARIOS COMPLETOS – TERMINAL DE PANGUIPULLI
+# =====================================================
 
-def formato_ampm(hora_24):
-    return datetime.strptime(hora_24, "%H:%M").strftime("%I:%M %p")
+horarios = [
+    # -------------------------------
+    # VALDIVIA (Buses Pirehueico)
+    # -------------------------------
+    {"empresa": "Buses Pirehueico", "destino": "Valdivia", "salida": "06:00", "llegada": "08:15"},
+    {"empresa": "Buses Pirehueico", "destino": "Valdivia", "salida": "06:45", "llegada": "08:55"},
+    {"empresa": "Buses Pirehueico", "destino": "Valdivia", "salida": "07:30", "llegada": "09:45"},
+    {"empresa": "Buses Pirehueico", "destino": "Valdivia", "salida": "09:00", "llegada": "11:15"},
+    {"empresa": "Buses Pirehueico", "destino": "Valdivia", "salida": "10:30", "llegada": "12:45"},
+    {"empresa": "Buses Pirehueico", "destino": "Valdivia", "salida": "12:00", "llegada": "14:10"},
+    {"empresa": "Buses Pirehueico", "destino": "Valdivia", "salida": "13:30", "llegada": "15:45"},
+    {"empresa": "Buses Pirehueico", "destino": "Valdivia", "salida": "15:00", "llegada": "17:10"},
+    {"empresa": "Buses Pirehueico", "destino": "Valdivia", "salida": "16:30", "llegada": "18:45"},
+    {"empresa": "Buses Pirehueico", "destino": "Valdivia", "salida": "18:00", "llegada": "20:15"},
+    {"empresa": "Buses Pirehueico", "destino": "Valdivia", "salida": "19:15", "llegada": "21:30"},
 
+    # -------------------------------
+    # SANTIAGO (Pullman / Luna Express)
+    # -------------------------------
+    {"empresa": "Pullman Bus", "destino": "Santiago", "salida": "20:30", "llegada": "07:00"},
+    {"empresa": "Luna Express", "destino": "Santiago", "salida": "21:00", "llegada": "07:30"},
 
-horarios_data = [
+    # Llegadas desde Santiago
+    {"empresa": "Pullman Bus", "destino": "Panguipulli", "salida": "Santiago 21:30", "llegada": "09:20"},
+    {"empresa": "Luna Express", "destino": "Panguipulli", "salida": "Santiago 22:15", "llegada": "09:45"},
 
-    {"id": 1, "tipo": "salida", "empresa": "Buses JAC", "destino": "Valdivia", "origen": "Panguipulli", "salida": "06:15", "llegada": "08:30", "estado": "A tiempo", "anden": 1},
-    {"id": 2, "tipo": "salida", "empresa": "Tur Bus", "destino": "Temuco", "origen": "Panguipulli", "salida": "06:45", "llegada": "09:15", "estado": "A tiempo", "anden": 2},
-    {"id": 3, "tipo": "salida", "empresa": "Buses Liquiñe", "destino": "Coñaripe", "origen": "Panguipulli", "salida": "07:00", "llegada": "07:45", "estado": "A tiempo", "anden": 4},
-    {"id": 4, "tipo": "salida", "empresa": "Buses Galicia", "destino": "Lanco", "origen": "Panguipulli", "salida": "07:30", "llegada": "08:15", "estado": "Próximo", "anden": 3},
-    {"id": 5, "tipo": "salida", "empresa": "Buses Lafit", "destino": "Calafquen", "origen": "Panguipulli", "salida": "08:00", "llegada": "08:30", "estado": "Próximo", "anden": 5},
-    {"id": 6, "tipo": "salida", "empresa": "Tur Bus", "destino": "Santiago", "origen": "Panguipulli", "salida": "08:30", "llegada": "18:00", "estado": "Próximo", "anden": 2},
-    {"id": 7, "tipo": "salida", "empresa": "Buses JAC", "destino": "Villarrica", "origen": "Panguipulli", "salida": "09:00", "llegada": "09:40", "estado": "Próximo", "anden": 1},
-    {"id": 8, "tipo": "salida", "empresa": "Jet Sur", "destino": "Santiago", "origen": "Panguipulli", "salida": "19:45", "llegada": "06:00", "estado": "Próximo", "anden": 6},
-    {"id": 9, "tipo": "salida", "empresa": "Transantin", "destino": "Santiago", "origen": "Panguipulli", "salida": "20:00", "llegada": "06:30", "estado": "Próximo", "anden": 7},
-    {"id": 18, "tipo": "salida", "empresa": "Buses JAC", "destino": "Valdivia", "origen": "Panguipulli", "salida": "12:00", "llegada": "14:15", "estado": "Próximo", "anden": 1},
-    {"id": 19, "tipo": "salida", "empresa": "Tur Bus", "destino": "Temuco", "origen": "Panguipulli", "salida": "13:30", "llegada": "16:00", "estado": "Próximo", "anden": 2},
-    {"id": 20, "tipo": "salida", "empresa": "Buses Galicia", "destino": "Lanco", "origen": "Panguipulli", "salida": "15:45", "llegada": "16:30", "estado": "Próximo", "anden": 3},
+    # -------------------------------
+    # TEMUCO (Regional Sur)
+    # -------------------------------
+    {"empresa": "Regional Sur", "destino": "Temuco", "salida": "07:30", "llegada": "10:00"},
+    {"empresa": "Regional Sur", "destino": "Temuco", "salida": "09:45", "llegada": "12:10"},
+    {"empresa": "Regional Sur", "destino": "Temuco", "salida": "13:15", "llegada": "15:45"},
+    {"empresa": "Regional Sur", "destino": "Temuco", "salida": "17:30", "llegada": "20:00"},
 
+    # Llegadas desde Temuco
+    {"empresa": "Regional Sur", "destino": "Panguipulli", "salida": "Temuco 06:00", "llegada": "08:30"},
+    {"empresa": "Regional Sur", "destino": "Panguipulli", "salida": "Temuco 09:30", "llegada": "12:00"},
+    {"empresa": "Regional Sur", "destino": "Panguipulli", "salida": "Temuco 14:00", "llegada": "16:30"},
+    {"empresa": "Regional Sur", "destino": "Panguipulli", "salida": "Temuco 17:00", "llegada": "19:20"},
 
-    {"id": 10, "tipo": "llegada", "empresa": "Buses Lafit", "destino": "Panguipulli", "origen": "Lanco", "salida": "05:45", "llegada": "06:30", "estado": "A tiempo", "anden": 3},
-    {"id": 11, "tipo": "llegada", "empresa": "Tur Bus", "destino": "Panguipulli", "origen": "Temuco", "salida": "05:45", "llegada": "08:00", "estado": "A tiempo", "anden": 2},
-    {"id": 12, "tipo": "llegada", "empresa": "Buses Galicia", "destino": "Panguipulli", "origen": "Valdivia", "salida": "05:45", "llegada": "07:55", "estado": "A tiempo", "anden": 1},
-    {"id": 13, "tipo": "llegada", "empresa": "Buses JAC", "destino": "Panguipulli", "origen": "Villarrica", "salida": "07:00", "llegada": "07:40", "estado": "Próximo", "anden": 1},
-    {"id": 14, "tipo": "llegada", "empresa": "Buses Liquiñe", "destino": "Panguipulli", "origen": "Coñaripe", "salida": "08:00", "llegada": "08:45", "estado": "Próximo", "anden": 4},
-    {"id": 15, "tipo": "llegada", "empresa": "Tur Bus", "destino": "Panguipulli", "origen": "Santiago", "salida": "21:00", "llegada": "06:30", "estado": "Próximo", "anden": 2},
-    {"id": 16, "tipo": "llegada", "empresa": "Jet Sur", "destino": "Panguipulli", "origen": "Santiago", "salida": "21:25", "llegada": "07:00", "estado": "Próximo", "anden": 6},
-    {"id": 17, "tipo": "llegada", "empresa": "Transantin", "destino": "Panguipulli", "origen": "Neltume", "salida": "18:30", "llegada": "19:40", "estado": "Próximo", "anden": 7},
-    {"id": 21, "tipo": "llegada", "empresa": "Buses JAC", "destino": "Panguipulli", "origen": "Valdivia", "salida": "10:00", "llegada": "12:15", "estado": "A tiempo", "anden": 1},
-    {"id": 22, "tipo": "llegada", "empresa": "Tur Bus", "destino": "Panguipulli", "origen": "Temuco", "salida": "11:00", "llegada": "13:30", "estado": "A tiempo", "anden": 2},
-    {"id": 23, "tipo": "llegada", "empresa": "Buses Galicia", "destino": "Panguipulli", "origen": "Lanco", "salida": "14:00", "llegada": "14:45", "estado": "Próximo", "anden": 3},
+    # -------------------------------
+    # COÑARIPE (Buses Coñaripe)
+    # -------------------------------
+    {"empresa": "Buses Coñaripe", "destino": "Coñaripe", "salida": "06:30", "llegada": "07:25"},
+    {"empresa": "Buses Coñaripe", "destino": "Coñaripe", "salida": "08:00", "llegada": "08:55"},
+    {"empresa": "Buses Coñaripe", "destino": "Coñaripe", "salida": "10:30", "llegada": "11:25"},
+    {"empresa": "Buses Coñaripe", "destino": "Coñaripe", "salida": "13:00", "llegada": "13:55"},
+    {"empresa": "Buses Coñaripe", "destino": "Coñaripe", "salida": "17:30", "llegada": "18:25"},
+
+    # Llegadas Coñaripe → Panguipulli
+    {"empresa": "Buses Coñaripe", "destino": "Panguipulli", "salida": "Coñaripe 07:40", "llegada": "08:35"},
+    {"empresa": "Buses Coñaripe", "destino": "Panguipulli", "salida": "Coñaripe 12:00", "llegada": "12:55"},
+    {"empresa": "Buses Coñaripe", "destino": "Panguipulli", "salida": "Coñaripe 18:00", "llegada": "18:55"},
+
+    # -------------------------------
+    # VILLARRICA (Buses Villarrica)
+    # -------------------------------
+    {"empresa": "Buses Villarrica", "destino": "Villarrica", "salida": "06:45", "llegada": "08:20"},
+    {"empresa": "Buses Villarrica", "destino": "Villarrica", "salida": "11:15", "llegada": "12:50"},
+    {"empresa": "Buses Villarrica", "destino": "Villarrica", "salida": "15:45", "llegada": "17:20"},
+
+    # Llegadas Villarrica → Panguipulli
+    {"empresa": "Buses Villarrica", "destino": "Panguipulli", "salida": "Villarrica 09:00", "llegada": "10:35"},
+    {"empresa": "Buses Villarrica", "destino": "Panguipulli", "salida": "Villarrica 13:30", "llegada": "15:05"},
+    {"empresa": "Buses Villarrica", "destino": "Panguipulli", "salida": "Villarrica 18:00", "llegada": "19:35"},
+
+    # -------------------------------
+    # LOS LAGOS (Regional Sur)
+    # -------------------------------
+    {"empresa": "Regional Sur", "destino": "Los Lagos", "salida": "14:00", "llegada": "14:45"},
+    {"empresa": "Turbus", "destino": "Los Lagos", "salida": "09:15", "llegada": "10:00"},
+
+    # Llegadas Los Lagos → Panguipulli
+    {"empresa": "Regional Sur", "destino": "Panguipulli", "salida": "Los Lagos 13:00", "llegada": "13:45"},
+    {"empresa": "Turbus", "destino": "Panguipulli", "salida": "Los Lagos 08:00", "llegada": "08:45"},
+
+    # -------------------------------
+    # LIQUIÑE (Buses Liquiñe)
+    # -------------------------------
+    {"empresa": "Buses Liquiñe", "destino": "Liquiñe", "salida": "08:00", "llegada": "09:30"},
+    {"empresa": "Buses Liquiñe", "destino": "Liquiñe", "salida": "14:15", "llegada": "15:45"},
+    {"empresa": "Buses Liquiñe", "destino": "Liquiñe", "salida": "17:50", "llegada": "19:20"},
+
+    # Llegadas Liquiñe → Panguipulli
+    {"empresa": "Buses Liquiñe", "destino": "Panguipulli", "salida": "Liquiñe 06:30", "llegada": "08:00"},
+    {"empresa": "Buses Liquiñe", "destino": "Panguipulli", "salida": "Liquiñe 12:00", "llegada": "13:30"},
+
+    # -------------------------------
+    # NELTUME (Buses Lafit)
+    # -------------------------------
+    {"empresa": "Buses Lafit", "destino": "Neltume", "salida": "07:00", "llegada": "09:00"},
+    {"empresa": "Buses Lafit", "destino": "Neltume", "salida": "13:30", "llegada": "15:30"},
+
+    # Llegadas Neltume → Panguipulli
+    {"empresa": "Buses Lafit", "destino": "Panguipulli", "salida": "Neltume 10:30", "llegada": "12:30"},
+    {"empresa": "Buses Lafit", "destino": "Panguipulli", "salida": "Neltume 16:45", "llegada": "18:45"},
+
+    # -------------------------------
+    # PUERTO FUY (Servicio rural)
+    # -------------------------------
+    {"empresa": "Rural Puerto Fuy", "destino": "Puerto Fuy", "salida": "11:00", "llegada": "12:20"},
+    {"empresa": "Rural Puerto Fuy", "destino": "Puerto Fuy", "salida": "17:00", "llegada": "18:20"},
+
+    {"empresa": "Rural Puerto Fuy", "destino": "Panguipulli", "salida": "Puerto Fuy 06:15", "llegada": "07:35"},
+    {"empresa": "Rural Puerto Fuy", "destino": "Panguipulli", "salida": "Puerto Fuy 14:00", "llegada": "15:20"},
+
+    # -------------------------------
+    # HURQUEHUE (Rural)
+    # -------------------------------
+    {"empresa": "Rural Hurquehue", "destino": "Hurquehue", "salida": "12:30", "llegada": "13:10"},
+    {"empresa": "Rural Hurquehue", "destino": "Hurquehue", "salida": "16:45", "llegada": "17:25"},
+
+    {"empresa": "Rural Hurquehue", "destino": "Panguipulli", "salida": "Hurquehue 06:30", "llegada": "07:10"},
+    {"empresa": "Rural Hurquehue", "destino": "Panguipulli", "salida": "Hurquehue 14:15", "llegada": "14:55"},
 ]
 
+# =====================================================
+# ENDPOINTS API
+# =====================================================
 
-for h in horarios_data:
-    h["salida"] = formato_ampm(h["salida"])
-    h["llegada"] = formato_ampm(h["llegada"])
+@app.route("/")
+def home():
+    return "API Horarios de Buses – Terminal Panguipulli ✅"
 
-@app.route('/api/horarios', methods=['GET'])
+@app.route("/horarios")
 def get_horarios():
-    return jsonify(horarios_data)
+    return jsonify(horarios)
 
-@app.route('/', defaults={'path': ''})
-@app.route('/<path:path>')
-def serve(path):
-    if path != '' and os.path.exists(path):
-        return send_from_directory('.', path)
-    return send_from_directory('.', 'index.html')
+@app.route("/salidas")
+def get_salidas():
+    return jsonify([h for h in horarios if "Panguipulli" not in h["destino"]])
 
-if __name__ == '__main__':
-    app.run(host='127.0.0.1', port=5000, debug=True)
+@app.route("/llegadas")
+def get_llegadas():
+    return jsonify([h for h in horarios if "Panguipulli" in h["destino"]])
+
+@app.route("/destinos")
+def destinos():
+    destinos = sorted(list(set([h["destino"] for h in horarios])))
+    return jsonify(destinos)
+
+# =====================================================
+
+if __name__ == "__main__":
+    app.run(debug=True)
+    
