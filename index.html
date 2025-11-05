@@ -1,284 +1,141 @@
 <!DOCTYPE html>
 <html lang="es">
 <head>
-  <meta charset="UTF-8" />
-  <meta name="viewport" content="width=device-width, initial-scale=1" />
-  <title>Terminal Panguipulli – Horarios de Buses</title>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Terminal Panguipulli - Horarios de buses</title>
 
-  <script src="https://cdn.tailwindcss.com"></script>
-  <meta name="theme-color" content="#0b1221" />
-  <link rel="manifest" href="./manifest.json" />
+    <!-- Tailwind -->
+    <script src="https://cdn.tailwindcss.com"></script>
 
-  <style>
-    :root{--bg:#0b1221;--card:#0f172a;--muted:#94a3b8;--txt:#e5e7eb;--accent:#60a5fa;--danger:#ef4444}
-    html,body{height:100%}
-    body{background:var(--bg);color:var(--txt)}
-    .card{background:var(--card);border-radius:18px}
-    .tab{padding:.5rem 0.25rem;border-bottom:2px solid transparent}
-    .tab-active{color:var(--accent);border-color:var(--accent)}
-    .splash{position:fixed;inset:0;background:#0b1221;display:flex;align-items:center;justify-content:center;z-index:50}
-    .dot{width:.5rem;height:.5rem;border-radius:9999px;background:#fff;opacity:.6;animation:blink 1.2s infinite}
-    .dot:nth-child(2){animation-delay:.2s}.dot:nth-child(3){animation-delay:.4s}
-    @keyframes blink{0%,80%,100%{opacity:.2}40%{opacity:1}}
-    .sr-only{position:absolute;width:1px;height:1px;padding:0;margin:-1px;overflow:hidden;clip:rect(0,0,0,0);white-space:nowrap;border:0}
-  </style>
+    <style>
+        body { background: #0b132b; color: #e0e0e0; font-family: 'Inter', sans-serif; }
+        .card { background: #1c2541; border-radius: 18px; }
+        .tab { padding: 8px 16px; cursor: pointer; }
+        .tab-active { border-bottom: 3px solid #3a86ff; color: #3a86ff; }
+        .fade-in { animation: fade .4s ease-in-out; }
+        @keyframes fade { from { opacity: 0; } to { opacity: 1; } }
+    </style>
 </head>
-<body>
 
-  <!-- Splash / loading -->
-  <div id="splash" class="splash">
-    <div class="text-center">
-      <img src="./logo_192.png" alt="" class="mx-auto w-14 h-14 mb-3 rounded-xl" />
-      <h1 class="text-lg font-semibold">Terminal Panguipulli</h1>
-      <p class="text-sm text-slate-400">Cargando horarios…</p>
-      <div class="mt-3 flex items-center justify-center gap-2">
-        <span class="dot"></span><span class="dot"></span><span class="dot"></span>
-      </div>
+<body class="min-h-screen">
+
+<div class="max-w-4xl mx-auto p-4 fade-in">
+
+    <!-- HEADER -->
+    <div class="flex items-center gap-3 mb-6">
+        <img src="logo_192.png" class="w-14 h-14 rounded-xl border border-gray-700 shadow-lg bg-white"/>
+        <div>
+            <h1 class="text-2xl font-semibold text-white">Terminal Panguipulli</h1>
+            <p class="text-gray-400 text-sm">Horarios de buses en tiempo real</p>
+        </div>
     </div>
-  </div>
 
-  <main class="max-w-5xl mx-auto px-4 py-5">
-    <!-- Header -->
-    <header class="flex items-center gap-3 mb-4">
-      <img src="./logo_192.png" alt="Logo" class="w-11 h-11 rounded-xl" />
-      <div class="min-w-0">
-        <h1 class="text-xl font-semibold truncate">Terminal Panguipulli</h1>
-        <p class="text-sm text-slate-400 truncate">Horarios de buses</p>
-      </div>
-      <div class="ml-auto flex items-center gap-2">
-        <button id="btn-refrescar" class="px-3 py-2 rounded-lg bg-slate-700/60 hover:bg-slate-700 text-sm">Actualizar</button>
-        <a href="./sw.js" class="px-3 py-2 rounded-lg bg-slate-700/40 text-sm" target="_blank" rel="noopener">SW</a>
-        <a href="./manifest.json" class="px-3 py-2 rounded-lg bg-slate-700/40 text-sm" target="_blank" rel="noopener">Manifest</a>
-      </div>
-    </header>
+    <!-- BUSCADOR -->
+    <div class="card p-4 mb-5 shadow-xl">
+        <input id="buscar" type="search" placeholder="Buscar por destino, origen o empresa..."
+               class="w-full p-3 rounded-lg bg-[#0d1b2a] text-gray-200 outline-none">
+    </div>
 
-    <!-- Search + Tabs -->
-    <section class="card p-4 mb-4">
-      <div class="flex flex-col md:flex-row gap-3">
-        <div class="flex-1">
-          <label for="buscar" class="sr-only">Buscar</label>
-          <input id="buscar" type="search" placeholder="Buscar por destino, origen, empresa u hora…"
-                 class="w-full rounded-xl bg-slate-800/70 text-slate-100 placeholder-slate-400 px-4 py-3 outline-none ring-1 ring-slate-700 focus:ring-2 focus:ring-slate-500" />
-        </div>
-        <div class="flex gap-2">
-          <select id="f-empresa" class="rounded-xl bg-slate-800/70 px-3 py-3 ring-1 ring-slate-700 focus:ring-2 focus:ring-slate-500">
-            <option value="">Todas las empresas</option>
-          </select>
-          <select id="f-am-pm" class="rounded-xl bg-slate-800/70 px-3 py-3 ring-1 ring-slate-700 focus:ring-2 focus:ring-slate-500">
-            <option value="">AM/PM</option>
-            <option value="AM">Solo AM</option>
-            <option value="PM">Solo PM</option>
-          </select>
-        </div>
-      </div>
-
-      <div class="mt-4 flex items-center gap-6 text-sm">
+    <!-- TABS -->
+    <div class="flex gap-6 text-sm font-medium mb-4">
         <button id="tab-salidas" class="tab tab-active">Salidas</button>
         <button id="tab-llegadas" class="tab">Llegadas</button>
-        <span id="contador" class="ml-auto text-slate-400">—</span>
-      </div>
-    </section>
+    </div>
 
-    <!-- Table -->
-    <section class="card overflow-hidden">
-      <div class="overflow-x-auto">
-        <table class="min-w-full text-sm">
-          <thead class="bg-slate-800/60 text-slate-300">
-            <tr>
-              <th class="text-left px-4 py-3">Salida</th>
-              <th class="text-left px-4 py-3">Destino / Origen</th>
-              <th class="text-left px-4 py-3">Empresa</th>
-              <th class="text-left px-4 py-3">Llegada</th>
-            </tr>
-          </thead>
-          <tbody id="tbody" class="divide-y divide-slate-800"></tbody>
+    <!-- TABLA -->
+    <div class="card p-2 shadow-xl">
+        <table class="w-full text-left rounded-lg overflow-hidden">
+            <thead class="text-gray-400 border-b border-gray-600">
+                <tr>
+                    <th class="p-3">Hora salida</th>
+                    <th class="p-3">Empresa</th>
+                    <th class="p-3">Destino</th>
+                    <th class="p-3">Llegada</th>
+                </tr>
+            </thead>
+            <tbody id="tbody" class="fade-in"></tbody>
         </table>
-      </div>
+    </div>
 
-      <div class="p-3 bg-slate-900/50 text-center">
-        <p id="error-msg" class="text-red-400"></p>
-        <button id="btn-reintentar" class="mt-2 hidden px-4 py-2 rounded-lg bg-slate-700 hover:bg-slate-600 text-sm">
-          Reintentar ↻
-        </button>
-      </div>
-    </section>
+    <p id="error-msg" class="text-center text-red-400 mt-4"></p>
 
-    <footer class="mt-6 text-center text-xs text-slate-500">
-      Última actualización <span id="last-update">—</span>
-    </footer>
-  </main>
+</div>
 
-  <script>
-  // -------------------- CONFIG --------------------
-  const ABS_URL = "https://bsred.onrender.com/horarios";
-  const REL_URL = "/horarios"; // fallback si sirve Flask directamente
+<!-- ========================================================= -->
+<!-- ✅ SCRIPT PARA CONECTAR A LA API DE RENDER Y ACTUALIZAR TABLA -->
+<!-- ========================================================= -->
 
-  // -------------------- STATE ---------------------
-  let horarios = [];
-  let vista = "salidas"; // 'salidas' | 'llegadas'
+<script>
+const api = "https://bsred.onrender.com/horarios";   // URL FIJA PARA EVITAR 404
+let horarios = [];
+let vista = "salidas"; // por defecto
 
-  // -------------------- DOM -----------------------
-  const elBuscar = document.getElementById("buscar");
-  const elEmp = document.getElementById("f-empresa");
-  const elAmPm = document.getElementById("f-am-pm");
-  const elTabSalidas = document.getElementById("tab-salidas");
-  const elTabLlegadas = document.getElementById("tab-llegadas");
-  const elTbody = document.getElementById("tbody");
-  const elError = document.getElementById("error-msg");
-  const elBtnRetry = document.getElementById("btn-reintentar");
-  const elContador = document.getElementById("contador");
-  const elBtnRefresh = document.getElementById("btn-refrescar");
-  const elSplash = document.getElementById("splash");
-  const elLastUpd = document.getElementById("last-update");
+document.getElementById("buscar").addEventListener("input", filtrar);
+document.getElementById("tab-salidas").addEventListener("click", () => cambiarVista("salidas"));
+document.getElementById("tab-llegadas").addEventListener("click", () => cambiarVista("llegadas"));
 
-  // -------------------- EVENTS --------------------
-  elBuscar.addEventListener("input", applyFilters);
-  elEmp.addEventListener("change", applyFilters);
-  elAmPm.addEventListener("change", applyFilters);
-  elTabSalidas.addEventListener("click", () => switchTab("salidas"));
-  elTabLlegadas.addEventListener("click", () => switchTab("llegadas"));
-  elBtnRetry.addEventListener("click", loadData);
-  elBtnRefresh.addEventListener("click", loadData);
+// Cargar horarios desde API
+cargarHorarios();
 
-  // -------------------- LOAD ----------------------
-  registerSW();
-  loadData();
-
-  async function loadData(){
-    showError(""); elBtnRetry.classList.add("hidden");
-    showSplash(true);
-
-    // Intento 1: URL absoluta (Render)
-    // Intento 2: relativa (si se sirve local con Flask)
-    let data = null;
+async function cargarHorarios() {
     try {
-      data = await fetchJSON(ABS_URL);
-    } catch(e1){
-      try {
-        data = await fetchJSON(REL_URL);
-      } catch(e2){
-        showSplash(false);
-        showError("Error al cargar horarios. " + (e2.message || "Desconocido"));
-        elBtnRetry.classList.remove("hidden");
-        return;
-      }
+        const res = await fetch(api);
+        if (!res.ok) throw new Error("HTTP " + res.status);
+
+        horarios = await res.json();
+        filtrar();
+
+    } catch (error) {
+        document.getElementById("error-msg").innerText =
+            "Error al cargar horarios: " + error.message;
     }
+}
 
-    horarios = Array.isArray(data) ? data : [];
-    hydrateFilters(horarios);
-    applyFilters();
-
-    // Marcar actualización y ocultar splash con leve retardo
-    elLastUpd.textContent = new Date().toLocaleString();
-    setTimeout(() => showSplash(false), 350);
-  }
-
-  async function fetchJSON(url){
-    const res = await fetch(url, {cache:"no-store"});
-    if(!res.ok) throw new Error("HTTP " + res.status);
-    return res.json();
-  }
-
-  function showSplash(v){
-    elSplash.style.display = v ? "flex" : "none";
-  }
-
-  function switchTab(tab){
+function cambiarVista(tab) {
     vista = tab;
-    elTabSalidas.classList.toggle("tab-active", tab==="salidas");
-    elTabLlegadas.classList.toggle("tab-active", tab==="llegadas");
-    applyFilters();
-  }
+    document.getElementById("tab-salidas").classList.toggle("tab-active", tab === "salidas");
+    document.getElementById("tab-llegadas").classList.toggle("tab-active", tab === "llegadas");
+    filtrar();
+}
 
-  function hydrateFilters(data){
-    // Empresas únicas
-    const empresas = [...new Set(data.map(h => h.empresa))].sort();
-    elEmp.innerHTML = `<option value="">Todas las empresas</option>` + 
-      empresas.map(e => `<option>${e}</option>`).join("");
-  }
+function filtrar() {
+    const q = document.getElementById("buscar").value.toLowerCase();
 
-  function applyFilters(){
-    const q = elBuscar.value.trim().toLowerCase();
-    const emp = elEmp.value;
-    const ampm = elAmPm.value;
+    let filtrados = horarios.filter(h => {
+        const cumple = h.destino.toLowerCase().includes(q)
+                    || h.empresa.toLowerCase().includes(q)
+                    || h.salida.toLowerCase().includes(q);
 
-    let list = horarios.filter(h => {
-      // salidas / llegadas
-      const isLlegada = (h.destino || "").toLowerCase().includes("panguipulli");
-      if (vista === "salidas" && isLlegada) return false;
-      if (vista === "llegadas" && !isLlegada) return false;
-
-      // búsqueda
-      const hay = (h.destino + " " + h.empresa + " " + h.salida + " " + h.llegada).toLowerCase();
-      if (q && !hay.includes(q)) return false;
-
-      // empresa
-      if (emp && h.empresa !== emp) return false;
-
-      // AM/PM por hora de salida
-      if (ampm) {
-        const isPM = esPM(h.salida);
-        if (ampm === "AM" && isPM) return false;
-        if (ampm === "PM" && !isPM) return false;
-      }
-
-      return true;
+        if (!cumple) return false;
+        if (vista === "salidas") return !h.destino.includes("Panguipulli");
+        if (vista === "llegadas") return h.destino.includes("Panguipulli");
     });
 
-    renderTable(list);
-  }
+    renderTabla(filtrados);
+}
 
-  function esPM(hhmm){
-    // acepta formatos "06:30" o "Ciudad 06:30"
-    const m = /(\d{1,2}):(\d{2})/.exec(hhmm || "");
-    if(!m) return false;
-    const h = parseInt(m[1],10);
-    return h >= 12;
-  }
+function renderTabla(lista) {
+    const tbody = document.getElementById("tbody");
+    tbody.innerHTML = "";
 
-  function renderTable(list){
-    elTbody.innerHTML = "";
-    if(!list.length){
-      elTbody.innerHTML = `<tr><td colspan="4" class="px-4 py-6 text-center text-slate-400">Sin resultados</td></tr>`;
-      elContador.textContent = "0 resultados";
-      return;
+    if (lista.length === 0) {
+        tbody.innerHTML = `<tr><td colspan="4" class="text-center py-4 text-gray-400">Sin resultados</td></tr>`;
+        return;
     }
 
-    const rows = list.map(h => `
-      <tr class="hover:bg-slate-800/40 transition">
-        <td class="px-4 py-2 font-semibold">${safe(h.salida)}</td>
-        <td class="px-4 py-2">${safe(h.destino)}</td>
-        <td class="px-4 py-2">${safe(h.empresa)}</td>
-        <td class="px-4 py-2">${safe(h.llegada)}</td>
-      </tr>
-    `).join("");
+    lista.forEach(h => {
+        tbody.innerHTML += `
+        <tr class="border-b border-gray-700 hover:bg-[#243b55] transition">
+            <td class="p-3 font-semibold text-blue-300">${h.salida}</td>
+            <td class="p-3">${h.empresa}</td>
+            <td class="p-3">${h.destino}</td>
+            <td class="p-3">${h.llegada}</td>
+        </tr>
+        `;
+    });
+}
+</script>
 
-    elTbody.insertAdjacentHTML("beforeend", rows);
-    elContador.textContent = `${list.length} resultado${list.length===1?"":"s"}`;
-  }
-
-  function safe(x){ return (x ?? "").toString().replace(/[&<>"]/g, s => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[s])) }
-
-  function showError(msg){
-    elError.textContent = msg || "";
-    if(!msg) return;
-    console.error(msg);
-  }
-
-  // -------------------- SW -------------------------
-  function registerSW(){
-    if("serviceWorker" in navigator){
-      navigator.serviceWorker.register("./sw.js").then(reg=>{
-        // intenta actualizar en segundo plano
-        if(reg.update) reg.update();
-      }).catch(()=>{});
-    }
-  }
-  </script>
 </body>
 </html>
-
-
-
-
-
