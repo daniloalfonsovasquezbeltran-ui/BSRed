@@ -1,7 +1,7 @@
 from flask import Flask, jsonify, render_template
 from flask_cors import CORS
 
-app = Flask(__name__)
+app = Flask(__name__, static_folder="static", template_folder="templates")
 CORS(app)
 
 # =====================================================
@@ -75,7 +75,7 @@ horarios = [
     {"empresa": "Buses Villarrica", "destino": "Panguipulli", "salida": "Villarrica 18:00", "llegada": "19:35"},
 
     # -------------------------------
-    # LOS LAGOS (Regional Sur)
+    # LOS LAGOS (Regional Sur / TurBus)
     # -------------------------------
     {"empresa": "Regional Sur", "destino": "Los Lagos", "salida": "14:00", "llegada": "14:45"},
     {"empresa": "Turbus", "destino": "Los Lagos", "salida": "09:15", "llegada": "10:00"},
@@ -115,7 +115,7 @@ horarios = [
     {"empresa": "Rural Puerto Fuy", "destino": "Panguipulli", "salida": "Puerto Fuy 14:00", "llegada": "15:20"},
 
     # -------------------------------
-    # HURQUEHUE (Rural)
+    # HURQUEHUE (rural)
     # -------------------------------
     {"empresa": "Rural Hurquehue", "destino": "Hurquehue", "salida": "12:30", "llegada": "13:10"},
     {"empresa": "Rural Hurquehue", "destino": "Hurquehue", "salida": "16:45", "llegada": "17:25"},
@@ -125,12 +125,12 @@ horarios = [
 ]
 
 # =====================================================
-# ENDPOINTS API
+# RUTAS PARA FRONTEND Y API
 # =====================================================
 
 @app.route("/")
 def home():
-    return "API Horarios de Buses – Terminal Panguipulli ✅"
+    return render_template("index.html")  # ahora carga tu frontend
 
 @app.route("/horarios")
 def get_horarios():
@@ -149,8 +149,7 @@ def destinos():
     destinos = sorted(list(set([h["destino"] for h in horarios])))
     return jsonify(destinos)
 
-# =====================================================
-
 if __name__ == "__main__":
     app.run(debug=True)
     
+
