@@ -9,12 +9,16 @@
     <script src="https://cdn.tailwindcss.com"></script>
 
     <style>
-        body { background: #0b132b; color: #e0e0e0; font-family: 'Inter', sans-serif; }
+        body { background: #0b132b; color: #e0e0e0; font-family: 'Inter', sans-serif; transition: font-size .2s; }
         .card { background: #1c2541; border-radius: 18px; }
-        .tab { padding: 8px 16px; cursor: pointer; }
-        .tab-active { border-bottom: 3px solid #3a86ff; color: #3a86ff; }
+        .tab { padding: 8px 18px; cursor: pointer; border-bottom: 3px solid transparent; }
+        .tab-active { color: #3a86ff; border-bottom: 3px solid #3a86ff; }
         .fade-in { animation: fade .4s ease-in-out; }
         @keyframes fade { from { opacity: 0; } to { opacity: 1; } }
+
+        /* Modal */
+        .modal-bg { background: rgba(0,0,0,0.6); }
+        .modal { background: #1c2541; border-radius: 18px; }
     </style>
 </head>
 
@@ -23,12 +27,20 @@
 <div class="max-w-4xl mx-auto p-4 fade-in">
 
     <!-- HEADER -->
-    <div class="flex items-center gap-3 mb-6">
-        <img src="logo_192.png" class="w-14 h-14 rounded-xl border border-gray-700 shadow-lg bg-white"/>
-        <div>
-            <h1 class="text-2xl font-semibold text-white">Terminal Panguipulli</h1>
-            <p class="text-gray-400 text-sm">Horarios de buses en tiempo real</p>
+    <div class="flex items-center justify-between mb-6">
+        <div class="flex items-center gap-3">
+            <img src="logo_192.png" class="w-14 h-14 rounded-xl border border-gray-700 shadow-lg bg-white"/>
+            <div>
+                <h1 class="text-2xl font-semibold text-white">Terminal Panguipulli</h1>
+                <p class="text-gray-400 text-sm">Horarios actualizados</p>
+            </div>
         </div>
+
+        <!-- ✅ Botón de tamaño de fuente -->
+        <button id="btnFuente"
+            class="px-3 py-2 rounded-lg bg-[#3a86ff] hover:bg-[#2663cc] text-sm font-semibold shadow-lg">
+            A+
+        </button>
     </div>
 
     <!-- BUSCADOR -->
@@ -48,7 +60,7 @@
         <table class="w-full text-left rounded-lg overflow-hidden">
             <thead class="text-gray-400 border-b border-gray-600">
                 <tr>
-                    <th class="p-3">Hora salida</th>
+                    <th class="p-3">Salida</th>
                     <th class="p-3">Empresa</th>
                     <th class="p-3">Destino</th>
                     <th class="p-3">Llegada</th>
@@ -62,25 +74,45 @@
 
 </div>
 
-<!-- ========================================================= -->
-<!-- ✅ SCRIPT PARA CONECTAR A LA API DE RENDER Y ACTUALIZAR TABLA -->
-<!-- ========================================================= -->
 
+<!-- ✅ MODAL DE CONFIRMACIÓN -->
+<div id="modal" class="fixed inset-0 modal-bg hidden flex items-center justify-center">
+    <div class="modal p-6 w-80 text-center">
+        <h2 class="text-lg font-semibold mb-3">¿Aumentar tamaño de letra?</h2>
+        <p class="text-gray-300 text-sm mb-6">Puedes volver al tamaño original cuando quieras.</p>
+
+        <div class="flex justify-center gap-4">
+            <button id="confirmar"
+                class="bg-green-500 hover:bg-green-600 px-4 py-2 rounded-lg font-medium">
+                Confirmar
+            </button>
+            <button id="cancelar"
+                class="bg-red-500 hover:bg-red-600 px-4 py-2 rounded-lg font-medium">
+                Cancelar
+            </button>
+        </div>
+    </div>
+</div>
+
+
+<!-- SCRIPT - Conexión a API + Cambio de fuente -->
 <script>
-const api = "https://bsred.onrender.com/horarios";   // URL FIJA PARA EVITAR 404
+const API = "https://bsred.onrender.com/horarios";  // ✅ URL FIJA (no 404)
 let horarios = [];
 let vista = "salidas"; // por defecto
 
 document.getElementById("buscar").addEventListener("input", filtrar);
 document.getElementById("tab-salidas").addEventListener("click", () => cambiarVista("salidas"));
 document.getElementById("tab-llegadas").addEventListener("click", () => cambiarVista("llegadas"));
+document.getElementById("btnFuente").addEventListener("click", abrirModal);
+document.getElementById("confirmar").addEventListener("click", aumentarFuente);
+document.getElementById("cancelar").addEventListener("click", cerrarModal);
 
-// Cargar horarios desde API
-cargarHorarios();
+// ------------------------- API -------------------------
 
 async function cargarHorarios() {
     try {
-        const res = await fetch(api);
+        const res = await fetch(API);
         if (!res.ok) throw new Error("HTTP " + res.status);
 
         horarios = await res.json();
@@ -103,9 +135,10 @@ function filtrar() {
     const q = document.getElementById("buscar").value.toLowerCase();
 
     let filtrados = horarios.filter(h => {
-        const cumple = h.destino.toLowerCase().includes(q)
-                    || h.empresa.toLowerCase().includes(q)
-                    || h.salida.toLowerCase().includes(q);
+        const cumple =
+            h.destino.toLowerCase().includes(q) ||
+            h.empresa.toLowerCase().includes(q) ||
+            h.salida.toLowerCase().includes(q);
 
         if (!cumple) return false;
         if (vista === "salidas") return !h.destino.includes("Panguipulli");
@@ -120,21 +153,40 @@ function renderTabla(lista) {
     tbody.innerHTML = "";
 
     if (lista.length === 0) {
-        tbody.innerHTML = `<tr><td colspan="4" class="text-center py-4 text-gray-400">Sin resultados</td></tr>`;
+        tbody.innerHTML =
+            `<tr><td colspan="4" class="text-center py-4 text-gray-400">Sin resultados</td></tr>`;
         return;
     }
 
     lista.forEach(h => {
         tbody.innerHTML += `
-        <tr class="border-b border-gray-700 hover:bg-[#243b55] transition">
-            <td class="p-3 font-semibold text-blue-300">${h.salida}</td>
-            <td class="p-3">${h.empresa}</td>
-            <td class="p-3">${h.destino}</td>
-            <td class="p-3">${h.llegada}</td>
-        </tr>
+            <tr class="border-b border-gray-700 hover:bg-[#243b55] transition">
+                <td class="p-3 font-semibold text-blue-300">${h.salida}</td>
+                <td class="p-3">${h.empresa}</td>
+                <td class="p-3">${h.destino}</td>
+                <td class="p-3">${h.llegada}</td>
+            </tr>
         `;
     });
 }
+
+// ------------------------- MODAL CAMBIO DE FUENTE -------------------------
+
+function abrirModal() {
+    document.getElementById("modal").classList.remove("hidden");
+}
+
+function cerrarModal() {
+    document.getElementById("modal").classList.add("hidden");
+}
+
+function aumentarFuente() {
+    document.body.style.fontSize = "21px";
+    cerrarModal();
+}
+
+// Iniciar
+cargarHorarios();
 </script>
 
 </body>
