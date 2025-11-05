@@ -5,28 +5,31 @@
   <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
   <title>Tótem – Buses Panguipulli</title>
 
+  <!-- Tailwind -->
   <script src="https://cdn.tailwindcss.com"></script>
 
+  <!-- Inter -->
   <link rel="preconnect" href="https://fonts.googleapis.com" />
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
   <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet" />
 
+  <!-- PWA -->
   <link rel="manifest" href="manifest.json" />
   <meta name="theme-color" content="#0b1220"/>
 
   <style>
     :root { color-scheme: dark; }
     body { font-family: "Inter", system-ui, -apple-system, Segoe UI, Roboto, Ubuntu, Cantarell, "Helvetica Neue", Arial; background:#0b1220; }
-    /* Scrollbar */
     ::-webkit-scrollbar{ width:8px } ::-webkit-scrollbar-track{ background:#0f172a } ::-webkit-scrollbar-thumb{ background:#334155; border-radius:8px }
-    /* Estado */
+
+    /* Estado (pills) */
     .pill{ padding:.15rem .5rem; border-radius:9999px; font-weight:600; font-size:.72rem }
     .pill--tiempo{ background:#059669; color:#fff } .pill--retrasado{ background:#d97706; color:#fff }
     .pill--cancelado{ background:#dc2626; color:#fff } .pill--proximo{ background:#2563eb; color:#fff }
     /* Tabs */
     .tab-active{ color:#60a5fa; border-color:#60a5fa }
 
-    /* --- Splash (pantalla de carga 1s) --- */
+    /* Splash (pantalla de carga 1s) */
     #splash {
       position: fixed; inset: 0; display: grid; place-items: center;
       background: radial-gradient(1200px 800px at 50% -20%, rgba(37,99,235,.18), transparent 60%) #0b1220;
@@ -34,6 +37,9 @@
     }
     .spinner { width: 36px; height: 36px; border: 3px solid #1f2a44; border-top-color: #60a5fa; border-radius: 50%; animation: spin .8s linear infinite }
     @keyframes spin { to { transform: rotate(360deg) } }
+
+    /* Drawer ajustes */
+    #settings { box-shadow: -10px 0 30px rgba(0,0,0,.35); }
   </style>
 </head>
 
@@ -52,8 +58,9 @@
     Sin conexión: revisa tu internet o intenta nuevamente.
   </div>
 
-  <!-- App (oculta hasta terminar el splash) -->
+  <!-- App -->
   <div id="app" class="hidden max-w-lg mx-auto my-4 rounded-2xl overflow-hidden shadow-xl ring-1 ring-slate-800/40 bg-gradient-to-b from-slate-900 to-slate-950">
+
     <!-- Header -->
     <header class="sticky top-0 z-40 bg-slate-900/70 backdrop-blur border-b border-slate-800">
       <div class="flex items-center justify-between px-4 py-3">
@@ -64,14 +71,17 @@
             <p class="text-xs text-slate-400">Horarios de buses</p>
           </div>
         </div>
-        <button id="notification-bell"
-          class="p-2 rounded-lg hover:bg-slate-800 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-sky-500"
-          aria-label="Activar notificaciones">
-          <svg xmlns="http://www.w3.org/2000/svg" class="h-5 w-5 text-slate-300" viewBox="0 0 24 24" fill="none" stroke="currentColor">
-            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2"
-              d="M15 17h5l-1.4-1.4A2 2 0 0118 14.2V11a6 6 0 10-12 0v3.2c0 .5-.2 1.1-.6 1.4L4 17h5m6 0v1a3 3 0 11-6 0v-1" />
-          </svg>
-        </button>
+        <div class="flex items-center gap-2">
+          <button id="notification-bell"
+            class="p-2 rounded-lg hover:bg-slate-800 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-sky-500"
+            aria-label="Activar notificaciones">
+            <svg xmlns="http://www.w3.org/2000/svg" class="h-5 w-5 text-slate-300" viewBox="0 0 24 24" fill="none" stroke="currentColor">
+              <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2"
+                d="M15 17h5l-1.4-1.4A2 2 0 0118 14.2V11a6 6 0 10-12 0v3.2c0 .5-.2 1.1-.6 1.4L4 17h5m6 0v1a3 3 0 11-6 0v-1" />
+            </svg>
+          </button>
+          <button id="btn-settings" class="p-2 rounded-lg hover:bg-slate-800" aria-label="Ajustes">⚙️</button>
+        </div>
       </div>
 
       <div class="px-4 pb-3">
@@ -83,22 +93,21 @@
         <div class="mt-3 border-b border-slate-800" role="tablist" aria-label="Tipo de horario">
           <div class="flex gap-4">
             <button id="tab-salidas" role="tab" aria-selected="true" aria-controls="panel-salidas" tabindex="0"
-              class="py-3 text-sm font-medium border-b-2 border-transparent text-slate-300 tab-active">
-              Salidas
-            </button>
+              class="py-3 text-sm font-medium border-b-2 border-transparent text-slate-300 tab-active">Salidas</button>
             <button id="tab-llegadas" role="tab" aria-selected="false" aria-controls="panel-llegadas" tabindex="-1"
-              class="py-3 text-sm font-medium border-b-2 border-transparent text-slate-400 hover:text-slate-200">
-              Llegadas
-            </button>
+              class="py-3 text-sm font-medium border-b-2 border-transparent text-slate-400 hover:text-slate-200">Llegadas</button>
           </div>
         </div>
+
+        <!-- Chips de filtro rápido (empresas) -->
+        <div id="quick-filters" class="mt-2 flex flex-wrap gap-2"></div>
       </div>
     </header>
 
     <!-- Contenido -->
     <main class="px-4 pb-5">
-      <section id="schedule-container" class="h-[66vh] overflow-y-auto scroll-smooth" aria-live="polite">
-        <!-- Skeleton inicial (se muestra tras splash si aún no hay datos) -->
+      <section id="schedule-container" class="h-[66vh] overflow-y-auto scroll-smooth" aria-live="polite" aria-busy="true">
+        <!-- Skeleton -->
         <div id="skeleton" class="grid gap-3 py-4">
           <div class="animate-pulse rounded-xl bg-slate-800 h-20"></div>
           <div class="animate-pulse rounded-xl bg-slate-800 h-20"></div>
@@ -120,193 +129,285 @@
     </main>
   </div>
 
+  <!-- Drawer Ajustes -->
+  <aside id="settings" class="fixed inset-y-0 right-0 w-72 bg-slate-900 border-l border-slate-800 p-4 hidden z-50">
+    <h2 class="text-sm font-semibold mb-3">Ajustes</h2>
+    <label class="flex items-center justify-between text-sm mb-3">
+      Formato de hora (12h)
+      <input id="opt-12h" type="checkbox" class="accent-sky-500">
+    </label>
+    <label class="block text-sm mb-1">Pestaña por defecto</label>
+    <select id="opt-tab" class="w-full bg-slate-800 border border-slate-700 rounded px-2 py-1 text-sm">
+      <option value="salida">Salidas</option>
+      <option value="llegada">Llegadas</option>
+    </select>
+    <label class="block text-sm mt-3 mb-1">Tamaño de fuente</label>
+    <input id="opt-font" type="range" min="14" max="20" value="16" class="w-full">
+    <button id="btn-close" class="mt-4 w-full bg-sky-600 hover:bg-sky-500 rounded px-3 py-2 text-sm font-semibold">Guardar</button>
+  </aside>
+
   <!-- Toast -->
   <div id="toast" class="pointer-events-none fixed inset-x-0 bottom-6 mx-auto w-fit rounded-lg bg-sky-600/95 text-white py-2 px-4 text-sm shadow-lg opacity-0 transition-opacity">
     &nbsp;
   </div>
 
   <script>
-    // ===== CONFIG =====
-    const API_URL = "https://bsred.onrender.com/api/horarios"; // ajusta si cambia
-    const USE_12H = false; // true para formato 12h
+    /* =================== CONFIG =================== */
+    const API_URL = "https://bsred.onrender.com/api/horarios"; // Ajusta si cambia
+    let USE_12H = localStorage.getItem('USE_12H') === '1';
 
-    // ===== Helpers =====
-    const $ = s => document.querySelector(s);
-    const on = (el, ev, cb) => el.addEventListener(ev, cb);
-    const toast = (msg) => { const t=$("#toast"); t.textContent=msg; t.classList.remove("opacity-0"); setTimeout(()=>t.classList.add("opacity-0"), 2200); };
-    const pad2 = n => String(n).padStart(2,"0");
-    const parse24h = t => { const [h,m]=(t||"").split(":").map(Number); return Number.isFinite(h)&&Number.isFinite(m)?{h,m}:null; };
-    const fmtTime = t => { const x=parse24h(t); if(!x) return t; if(!USE_12H) return `${pad2(x.h)}:${pad2(x.m)}`; const ampm=x.h>=12?"PM":"AM"; const h12=x.h%12||12; return `${h12}:${pad2(x.m)} ${ampm}`; };
-    const toStatusPill = (e) => ({ "atiempo":"pill pill--tiempo","retrasado":"pill pill--retrasado","cancelado":"pill pill--cancelado","próximo":"pill pill--proximo","proximo":"pill pill--proximo" }[(e||"").toLowerCase()] || "pill pill--tiempo");
-    const debounce = (fn,ms=250)=>{ let id; return (...a)=>{ clearTimeout(id); id=setTimeout(()=>fn(...a),ms); }; };
-
-    // ===== SW opcional =====
+    /* ================ SW registro (PWA) ================ */
     if ("serviceWorker" in navigator) {
       window.addEventListener("load", () => {
         navigator.serviceWorker.register("/sw.js").catch(()=>{});
       });
     }
 
-    // ===== App =====
-    (function(){
-      const splash = $("#splash");
-      const app = $("#app");
-      const listEl = $("#list");
-      const skel = $("#skeleton");
-      const searchEl = $("#search-input");
-      const offline = $("#offline-banner");
-      const tabSalidas = $("#tab-salidas");
-      const tabLlegadas = $("#tab-llegadas");
+    /* =================== HELPERS =================== */
+    const $ = s => document.querySelector(s);
+    const on = (el, ev, cb) => el && el.addEventListener(ev, cb);
+    const toast = (msg) => { const t=$("#toast"); t.textContent=msg; t.classList.remove("opacity-0"); setTimeout(()=>t.classList.add("opacity-0"), 2200); };
+    const pad2 = n => String(n).padStart(2,"0");
+    const parse24h = t => { const [h,m]=(t||"").split(":").map(Number); return Number.isFinite(h)&&Number.isFinite(m)?{h,m}:null; };
+    const fmtTime = t => { const x=parse24h(t); if(!x) return t; if(!USE_12H) return `${pad2(x.h)}:${pad2(x.m)}`; const ampm=x.h>=12?"PM":"AM"; const h12=x.h%12||12; return `${h12}:${pad2(x.m)} ${ampm}`; };
+    const pill = (estado="") => {
+      const k = estado.toLowerCase().normalize("NFD").replace(/\p{Diacritic}/gu,"").replace(/\s+/g,"");
+      return { atiempo:"pill pill--tiempo", retrasado:"pill pill--retrasado", cancelado:"pill pill--cancelado", proximo:"pill pill--proximo" }[k] || "pill pill--tiempo";
+    };
+    const debounce = (fn,ms=250)=>{ let id; return (...a)=>{ clearTimeout(id); id=setTimeout(()=>fn(...a),ms); }; };
+    const unique = (list, key) => [...new Set(list.map(x => (x[key]||'').trim()).filter(Boolean))];
 
-      let currentTab = localStorage.getItem("tab") || "salida";
-      let allData = [];
-      let term = localStorage.getItem("search") || "";
-      searchEl.value = term;
+    /* =================== ESTADO =================== */
+    const splash = $("#splash");
+    const app = $("#app");
+    const offline = $("#offline-banner");
+    const schedule = $("#schedule-container");
+    const skeleton = $("#skeleton");
+    const listEl = $("#list");
+    const emptyEl = $("#empty");
+    const errorEl = $("#error");
+    const searchEl = $("#search-input");
+    const tabSalidas = $("#tab-salidas");
+    const tabLlegadas = $("#tab-llegadas");
+    const quickFilters = $("#quick-filters");
 
-      // Tabs
-      const setTab = (t) => {
-        currentTab = t; localStorage.setItem("tab", t);
-        const active = t==="salida"?tabSalidas:tabLlegadas;
-        const inactive = t==="salida"?tabLlegadas:tabSalidas;
-        active.classList.add("tab-active"); active.setAttribute("aria-selected","true"); active.tabIndex=0;
-        inactive.classList.remove("tab-active"); inactive.setAttribute("aria-selected","false"); inactive.tabIndex=-1;
-        render();
-      };
-      on(tabSalidas,"click",()=>setTab("salida"));
-      on(tabLlegadas,"click",()=>setTab("llegada"));
-      on(tabSalidas,"keydown",e=>{ if(e.key==="ArrowRight") tabLlegadas.click();});
-      on(tabLlegadas,"keydown",e=>{ if(e.key==="ArrowLeft") tabSalidas.click();});
+    let currentTab = localStorage.getItem("DEF_TAB") || localStorage.getItem("tab") || "salida";
+    let term = localStorage.getItem("search") || "";
+    let allData = [];
+    let lastUpdated = null;
 
-      // Notificaciones
-      on($("#notification-bell"),"click",()=>{
-        if ("Notification" in window) {
-          Notification.requestPermission().then(p=>toast(p==="granted"?"Notificaciones activadas":"Notificaciones bloqueadas"));
-        } else if (typeof Android!=="undefined" && typeof Android.notify==="function") {
-          Android.notify("Notificaciones activadas"); toast("Notificaciones activadas");
-        } else { toast("Este entorno no soporta notificaciones"); }
-      });
+    searchEl.value = term;
 
-      // Búsqueda
-      on(searchEl,"input",debounce(()=>{
-        term = searchEl.value.trim(); localStorage.setItem("search", term); render();
-      },250));
+    /* =================== AJUSTES (Drawer) =================== */
+    const drawer = $("#settings");
+    on($("#btn-settings"), "click", ()=> drawer.classList.toggle("hidden"));
+    on($("#btn-close"), "click", ()=>{
+      const use12 = $("#opt-12h").checked;
+      const defTab = $("#opt-tab").value;
+      const fsz = $("#opt-font").value;
+      localStorage.setItem('USE_12H', use12?'1':'0');
+      localStorage.setItem('DEF_TAB', defTab);
+      localStorage.setItem('FSZ', fsz);
+      document.documentElement.style.fontSize = fsz+'px';
+      USE_12H = use12;
+      setTab(defTab);
+      render();
+      drawer.classList.add("hidden");
+    });
+    // init ajustes
+    if (localStorage.FSZ) document.documentElement.style.fontSize = localStorage.FSZ+'px';
+    $("#opt-12h").checked = USE_12H;
+    $("#opt-tab").value = currentTab;
 
-      // Reintento
-      on($("#retry"),"click",()=>load());
+    /* =================== TABS =================== */
+    function setTab(t){
+      currentTab = t;
+      localStorage.setItem("tab", t);
+      const active = t==="salida"?tabSalidas:tabLlegadas;
+      const inactive = t==="salida"?tabLlegadas:tabSalidas;
+      active.classList.add("tab-active"); active.setAttribute("aria-selected","true"); active.tabIndex=0;
+      inactive.classList.remove("tab-active"); inactive.setAttribute("aria-selected","false"); inactive.tabIndex=-1;
+      render();
+    }
+    on(tabSalidas,"click",()=>setTab("salida"));
+    on(tabLlegadas,"click",()=>setTab("llegada"));
+    on(tabSalidas,"keydown",e=>{ if(e.key==="ArrowRight") tabLlegadas.click();});
+    on(tabLlegadas,"keydown",e=>{ if(e.key==="ArrowLeft") tabSalidas.click();});
 
-      // Click recordatorio por tarjeta
-      on($("#schedule-container"),"click",(e)=>{
-        const btn = e.target.closest(".notify-btn"); if(!btn) return;
-        const time = btn.dataset.time, city = btn.dataset.city;
+    /* =================== NOTIFICACIONES =================== */
+    on($("#notification-bell"),"click",()=>{
+      if ("Notification" in window) {
+        Notification.requestPermission().then(p=>toast(p==="granted"?"Notificaciones activadas":"Notificaciones bloqueadas"));
+      } else if (typeof Android!=="undefined" && typeof Android.notify==="function") {
+        Android.notify("Notificaciones activadas"); toast("Notificaciones activadas");
+      } else { toast("Este entorno no soporta notificaciones"); }
+    });
+
+    /* =================== BÚSQUEDA =================== */
+    on(searchEl,"input",debounce(()=>{
+      term = searchEl.value.trim();
+      localStorage.setItem("search", term);
+      render();
+    },250));
+
+    /* =================== REINTENTO =================== */
+    on($("#retry"),"click",()=>load());
+
+    /* =================== FAVORITOS =================== */
+    const FAV_KEY = 'FAV_ROUTES';
+    const getFav = ()=> new Set(JSON.parse(localStorage.getItem(FAV_KEY) || '[]'));
+    const setFav = (s)=> localStorage.setItem(FAV_KEY, JSON.stringify([...s]));
+
+    on(schedule,"click",(e)=>{
+      const favBtn = e.target.closest(".fav-btn");
+      if (favBtn){
+        const id = favBtn.dataset.id;
+        const fav = getFav();
+        fav.has(id) ? fav.delete(id) : fav.add(id);
+        setFav(fav);
+        toast(fav.has(id) ? 'Agregado a favoritos' : 'Eliminado de favoritos');
+        return;
+      }
+      const notifyBtn = e.target.closest(".notify-btn");
+      if (notifyBtn){
+        const time = notifyBtn.dataset.time, city = notifyBtn.dataset.city;
         const label = currentTab==="salida"?"a":"de";
         const t = parse24h(time); if(!t) return toast("Hora inválida");
         const now=new Date();
         const ev=new Date(now.getFullYear(), now.getMonth(), now.getDate(), t.h, t.m, 0);
         if (ev<now) return toast("La hora ya pasó");
         const ms = ev-now-30000; if (ms<=0) return toast("Falta muy poco");
-        const notify=()=>{ if("Notification" in window && Notification.permission==="granted"){ new Notification("Recordatorio",{body:`El bus ${label} ${city} está por ${currentTab==="salida"?"partir":"llegar"}.`, icon:"logo.jpg"}); } else if(typeof Android!=="undefined" && Android.notify){ Android.notify(`El bus ${label} ${city} está por ${currentTab==="salida"?"partir":"llegar"}.`);} else { toast("Activa notificaciones para recordatorios"); } };
-        setTimeout(notify, ms); toast(`Aviso programado para ${city}`);
-      });
+        const trigger=()=>{ if("Notification" in window && Notification.permission==="granted"){ new Notification("Recordatorio",{body:`El bus ${label} ${city} está por ${currentTab==="salida"?"partir":"llegar"}.`, icon:"logo.jpg"}); } else if(typeof Android!=="undefined" && Android.notify){ Android.notify(`El bus ${label} ${city} está por ${currentTab==="salida"?"partir":"llegar"}.`);} else { toast("Activa notificaciones para recordatorios"); } };
+        setTimeout(trigger, ms); toast(`Aviso programado para ${city}`);
+      }
+    });
 
-      function render(){
-        if (!allData.length) return;
-        const filtered = allData
-          .filter(x => x.tipo === currentTab)
-          .filter(x => {
-            if (!term) return true;
-            const t = term.toLowerCase();
-            return (x.destino||"").toLowerCase().includes(t) || (x.origen||"").toLowerCase().includes(t) || (x.empresa||"").toLowerCase().includes(t);
-          });
+    /* =================== RENDER =================== */
+    function renderFilters(data){
+      const empresas = unique(data, 'empresa').slice(0,8);
+      quickFilters.innerHTML = empresas.map(e=>`<button data-e="${e}" class="px-2 py-1 rounded-full bg-slate-800 border border-slate-700 text-xs hover:bg-slate-700">${e}</button>`).join('');
+      quickFilters.onclick = (ev)=>{
+        const b = ev.target.closest('button[data-e]'); if(!b) return;
+        const base = (searchEl.value||'').trim();
+        searchEl.value = (base ? base+' ' : '') + `"${b.dataset.e}"`;
+        searchEl.dispatchEvent(new Event('input'));
+      };
+    }
 
-        if (!filtered.length){
-          listEl.innerHTML = ""; skel.classList.add("hidden");
-          $("#empty").classList.remove("hidden"); $("#error").classList.add("hidden");
-          return;
-        }
+    function render(){
+      if (!allData.length) return;
+      const fav = getFav();
+      const t = (term||"").toLowerCase();
 
-        listEl.innerHTML = filtered.map(item=>{
-          const time = currentTab==="salida" ? item.salida : item.llegada;
-          const city = currentTab==="salida" ? item.destino : item.origen;
-          const pill = toStatusPill(item.estado);
-          return `
-            <article class="rounded-xl bg-slate-900/70 border border-slate-800 px-3 py-3 mb-3">
-              <div class="flex items-center justify-between gap-2">
-                <div class="min-w-0">
-                  <div class="truncate font-semibold">${item.empresa || "—"}</div>
-                  <div class="text-xs text-slate-400 mt-0.5">
-                    ${currentTab==="salida" ? "Destino" : "Origen"}:
-                    <span class="font-medium text-slate-300">${city || "—"}</span>
-                  </div>
-                </div>
-                <div class="text-right">
-                  <div class="text-2xl font-bold tabular-nums">${fmtTime(time)}</div>
-                  <div class="mt-1 flex items-center justify-end gap-2">
-                    <span class="${pill}">${item.estado || "A tiempo"}</span>
-                    <span class="text-xs text-slate-400">Andén ${item.anden ?? "—"}</span>
-                    <button class="notify-btn p-2 rounded-md hover:bg-slate-800" title="Recordarme"
-                      data-time="${time}" data-city="${city}">
-                      <svg xmlns="http://www.w3.org/2000/svg" class="h-4 w-4 text-slate-300" viewBox="0 0 24 24" fill="none" stroke="currentColor">
-                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2"
-                          d="M15 17h5l-1.4-1.4A2 2 0 0118 14.2V11a6 6 0 10-12 0v3.2c0 .5-.2 1.1-.6 1.4L4 17h5m6 0v1a3 3 0 11-6 0v-1" />
-                      </svg>
-                    </button>
-                  </div>
+      const filtered = allData
+        .filter(x => x.tipo === currentTab)
+        .filter(x => !t || (x.destino||"").toLowerCase().includes(t) || (x.origen||"").toLowerCase().includes(t) || (x.empresa||"").toLowerCase().includes(t));
+
+      if (!filtered.length){
+        listEl.innerHTML = "";
+        schedule.setAttribute("aria-busy","false");
+        skeleton.classList.add("hidden");
+        emptyEl.classList.remove("hidden");
+        errorEl.classList.add("hidden");
+        return;
+      }
+
+      listEl.innerHTML = filtered.map(item=>{
+        const time = currentTab==="salida" ? item.salida : item.llegada;
+        const city = currentTab==="salida" ? item.destino : item.origen;
+        const id = item.id || (item.empresa+'|'+(city||'')+'|'+(time||''));
+        const isFav = fav.has(id);
+        return `
+          <article class="rounded-xl bg-slate-900/70 border border-slate-800 px-3 py-3 mb-3">
+            <div class="flex items-center justify-between gap-2">
+              <div class="min-w-0">
+                <div class="truncate font-semibold">${item.empresa || "—"}</div>
+                <div class="text-xs text-slate-400 mt-0.5">
+                  ${currentTab==="salida" ? "Destino" : "Origen"}:
+                  <span class="font-medium text-slate-300">${city || "—"}</span>
                 </div>
               </div>
-            </article>
-          `;
-        }).join("");
+              <div class="text-right">
+                <div class="text-2xl font-bold tabular-nums">${fmtTime(time)}</div>
+                <div class="mt-1 flex items-center justify-end gap-2">
+                  <span class="${pill(item.estado)}">${item.estado || "A tiempo"}</span>
+                  <span class="text-xs text-slate-400">Andén ${item.anden ?? "—"}</span>
+                  <button class="fav-btn p-2 rounded-md hover:bg-slate-800 ${isFav?'ring-1 ring-yellow-400':''}" title="Favorito" data-id="${id}">⭐</button>
+                  <button class="notify-btn p-2 rounded-md hover:bg-slate-800" title="Recordarme"
+                    data-time="${time}" data-city="${city}">
+                    <svg xmlns="http://www.w3.org/2000/svg" class="h-4 w-4 text-slate-300" viewBox="0 0 24 24" fill="none" stroke="currentColor">
+                      <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2"
+                        d="M15 17h5l-1.4-1.4A2 2 0 0118 14.2V11a6 6 0 10-12 0v3.2c0 .5-.2 1.1-.6 1.4L4 17h5m6 0v1a3 3 0 11-6 0v-1" />
+                    </svg>
+                  </button>
+                </div>
+              </div>
+            </div>
+          </article>
+        `;
+      }).join("");
 
-        $("#empty").classList.add("hidden"); $("#error").classList.add("hidden");
-        skel.classList.add("hidden"); listEl.classList.remove("hidden");
+      emptyEl.classList.add("hidden"); errorEl.classList.add("hidden");
+      skeleton.classList.add("hidden"); listEl.classList.remove("hidden");
+      schedule.setAttribute("aria-busy","false");
+    }
+
+    /* =================== CARGA =================== */
+    async function load(){
+      schedule.setAttribute("aria-busy","true");
+      skeleton.classList.remove("hidden");
+      listEl.classList.add("hidden");
+      emptyEl.classList.add("hidden");
+      errorEl.classList.add("hidden");
+      offline.classList.add("hidden");
+      try{
+        const res = await fetch(API_URL, { cache:"no-store" });
+        if (!res.ok) throw new Error(`HTTP ${res.status}`);
+        allData = await res.json();
+        renderFilters(allData);
+        render();
+        lastUpdated = Date.now();
+      }catch(err){
+        console.error(err);
+        errorEl.querySelector("p").textContent = "Error al cargar horarios. " + (err?.message || "");
+        errorEl.classList.remove("hidden");
+        skeleton.classList.add("hidden");
+        if (!navigator.onLine) offline.classList.remove("hidden");
       }
+    }
 
-      async function load(){
-        try{
-          offline.classList.add("hidden");
-          const res = await fetch(API_URL, { cache:"no-store" });
-          if (!res.ok) throw new Error(`HTTP ${res.status}`);
+    /* =================== AUTO-REFRESH =================== */
+    setInterval(async ()=>{
+      if (!navigator.onLine) return;
+      try{
+        const res = await fetch(API_URL, {cache:'no-store'});
+        if (res.ok){
           allData = await res.json();
           render();
-        }catch(err){
-          console.error(err);
-          $("#error").querySelector("p").textContent = "Error al cargar horarios. " + (err?.message || "");
-          $("#error").classList.remove("hidden");
-          $("#empty").classList.add("hidden");
-          $("#list").classList.add("hidden");
-          $("#skeleton").classList.add("hidden");
-          if (!navigator.onLine) offline.classList.remove("hidden");
+          lastUpdated = Date.now();
         }
-      }
+      }catch{}
+    }, 90000);
 
-      // ---- Splash de 1 segundo (mínimo) ----
-      const minDelay = new Promise(res => setTimeout(res, 1000));
-      const start = (async ()=>{
-        // empezamos a cargar datos mientras está el splash
-        const fetchPromise = load();
-        // esperamos el mínimo de 1s y la primera carga (si falla igual mostramos UI)
-        await Promise.race([minDelay]); // garantiza 1s; no bloquea fetch
-        splash.remove();
-        app.classList.remove("hidden");
-        // si aún no hay datos, queda el skeleton activo
-        return fetchPromise;
-      })();
-
-      // Estado online/offline
-      on(window, "online",  () => { offline.classList.add("hidden"); toast("Conectado"); });
-      on(window, "offline", () => { offline.classList.remove("hidden"); toast("Sin conexión"); });
-
-      // Iniciar tab
-      setTab(currentTab);
-      void start;
+    /* =================== SPLASH 1s =================== */
+    const minDelay = new Promise(res => setTimeout(res, 1000));
+    (async ()=>{
+      const fetchPromise = load();
+      await minDelay;                 // garantiza 1 segundo de splash
+      splash.remove();
+      app.classList.remove("hidden"); // muestra UI
+      return fetchPromise;
     })();
+
+    /* =================== ONLINE/OFFLINE =================== */
+    on(window, "online",  () => { offline.classList.add("hidden"); toast("Conectado"); });
+    on(window, "offline", () => { offline.classList.remove("hidden"); toast("Sin conexión"); });
+
+    /* =================== INIT =================== */
+    setTab(currentTab);
   </script>
 </body>
 </html>
-
-
-
-
 
 
 
