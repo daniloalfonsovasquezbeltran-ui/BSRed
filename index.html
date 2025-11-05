@@ -406,8 +406,27 @@
     /* =================== INIT =================== */
     setTab(currentTab);
   </script>
+  <script>
+fetch("/horarios")
+  .then(res => res.json())
+  .then(data => {
+      const tbody = document.getElementById("tbody");
+      tbody.innerHTML = "";
+
+      data.forEach(h => {
+          tbody.innerHTML += `
+          <tr class="border-b">
+              <td class="px-3 py-2 font-semibold">${h.salida}</td>
+              <td class="px-3 py-2">${h.empresa}</td>
+              <td class="px-3 py-2">${h.destino}</td>
+              <td class="px-3 py-2">${h.llegada}</td>
+          </tr>`;
+      });
+  });
+  </script>
 </body>
 </html>
+
 
 
 
