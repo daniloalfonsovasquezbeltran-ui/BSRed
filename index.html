@@ -3,15 +3,10 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Tótem Informativo - Terminal Panguipulli</title>
+    <title>Tótem y Sistema de Gestión - Terminal Panguipulli</title>
 
-    <!-- Manifest PWA -->
-    <link rel="manifest" href="manifest.json">
-
-    <!-- Tailwind CSS -->
     <script src="https://cdn.tailwindcss.com"></script>
     
-    <!-- Leaflet CSS & JS para Mapa Interactivo -->
     <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
     <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
 
@@ -22,58 +17,95 @@
 </head>
 <body class="bg-slate-950 text-slate-100 h-screen w-screen overflow-hidden flex flex-col md:flex-row">
 
-    <!-- PANEL IZQUIERDO: CONTROLES, TABLA Y FILTROS -->
-    <aside class="w-full md:w-[420px] h-2/5 md:h-full bg-slate-900 border-r border-slate-800 flex flex-col z-10 shadow-2xl">
+    <!-- PANEL IZQUIERDO: RECORRIDOS Y SISTEMA DE CUENTAS -->
+    <aside class="w-full md:w-[440px] h-2/5 md:h-full bg-slate-900 border-r border-slate-800 flex flex-col z-10 shadow-2xl">
         
-        <!-- Header -->
+        <!-- Header con Botón de Usuario -->
         <header class="p-4 border-b border-slate-800 bg-slate-900 flex items-center justify-between">
             <div>
                 <h1 class="text-lg font-bold text-white flex items-center gap-2">
                     🚌 Terminal Panguipulli
                 </h1>
-                <p class="text-xs text-slate-400">Horarios y monitoreo de rutas en vivo</p>
+                <p class="text-xs text-slate-400" id="info-usuario-head">Modo Pasajero (Invitado)</p>
             </div>
-            <img src="logo.jpg" alt="Logo" class="h-10 w-10 object-contain rounded-lg border border-slate-700" onerror="this.style.display='none'">
+            <button onclick="abrirModalAuth()" id="btn-cuenta-header" class="px-3 py-1.5 bg-blue-600 hover:bg-blue-500 text-white text-xs font-semibold rounded-lg transition">
+                🔑 Ingresar
+            </button>
         </header>
 
-        <!-- Filtros y Búsqueda -->
-        <div class="p-4 border-b border-slate-800 space-y-3">
-            <!-- Pestañas Salidas / Llegadas -->
-            <div class="flex bg-slate-800 p-1 rounded-lg text-xs font-semibold">
-                <button id="tab-salidas" onclick="cambiarTab('salidas')" 
-                        class="flex-1 py-1.5 rounded-md bg-blue-600 text-white transition shadow font-bold">
-                    📤 Salidas
-                </button>
-                <button id="tab-llegadas" onclick="cambiarTab('llegadas')" 
-                        class="flex-1 py-1.5 rounded-md text-slate-400 hover:text-white transition">
-                    📥 Llegadas
+        <!-- SECCIÓN DINÁMICA: VISTA DE RUTAS PÚBLICAS -->
+        <div id="vista-rutas-publica" class="flex-1 flex flex-col overflow-hidden">
+            <!-- Filtros y Búsqueda -->
+            <div class="p-4 border-b border-slate-800 space-y-3">
+                <div class="flex bg-slate-800 p-1 rounded-lg text-xs font-semibold">
+                    <button id="tab-salidas" onclick="cambiarTab('salidas')" 
+                            class="flex-1 py-1.5 rounded-md bg-blue-600 text-white transition shadow font-bold">
+                        📤 Salidas
+                    </button>
+                    <button id="tab-llegadas" onclick="cambiarTab('llegadas')" 
+                            class="flex-1 py-1.5 rounded-md text-slate-400 hover:text-white transition">
+                        📥 Llegadas
+                    </button>
+                </div>
+
+                <input id="busqueda" type="search" placeholder="Buscar destino, empresa o andén..."
+                       oninput="onBusquedaChange()"
+                       class="w-full bg-slate-800 border border-slate-700 rounded-lg px-3 py-2 text-sm text-white focus:outline-none focus:border-blue-500">
+                
+                <button id="btn-reset" onclick="seleccionarHorario(null)" 
+                        class="w-full py-1.5 px-3 bg-slate-800 hover:bg-slate-700 text-blue-400 text-xs font-semibold rounded-lg border border-slate-700 transition flex items-center justify-center gap-1">
+                    🌐 Ver todas las rutas (<span id="txt-tab-actual">Salidas</span>)
                 </button>
             </div>
 
-            <!-- Caja de búsqueda -->
-            <input id="busqueda" type="search" placeholder="Buscar destino, empresa o andén..."
-                   oninput="onBusquedaChange()"
-                   class="w-full bg-slate-800 border border-slate-700 rounded-lg px-3 py-2 text-sm text-white focus:outline-none focus:border-blue-500">
-            
-            <!-- Botón Restaurar Mapa -->
-            <button id="btn-reset" onclick="seleccionarHorario(null)" 
-                    class="w-full py-1.5 px-3 bg-slate-800 hover:bg-slate-700 text-blue-400 text-xs font-semibold rounded-lg border border-slate-700 transition flex items-center justify-center gap-1">
-                🌐 Ver todas las rutas (<span id="txt-tab-actual">Salidas</span>)
-            </button>
+            <!-- Contenedor de Horarios -->
+            <div id="lista-horarios" class="flex-1 overflow-y-auto p-4 space-y-3 custom-scrollbar"></div>
         </div>
 
-        <!-- Contenedor de Horarios -->
-        <div id="lista-horarios" class="flex-1 overflow-y-auto p-4 space-y-3 custom-scrollbar">
-            <!-- Carga dinámicamente desde API -->
+        <!-- PANEL DE EMPRESA (ADMINISTRACIÓN DE CHOFERES) -->
+        <div id="panel-empresa" class="flex-1 p-4 space-y-4 overflow-y-auto custom-scrollbar hidden">
+            <div class="flex justify-between items-center border-b border-slate-800 pb-3">
+                <span class="text-xs font-semibold text-emerald-400">🏢 Panel de Empresa</span>
+                <button onclick="volverARutas()" class="text-xs text-blue-400 hover:underline">Ver Horarios</button>
+            </div>
+
+            <div class="bg-slate-800/60 p-3 rounded-xl border border-slate-700/60 space-y-3">
+                <h3 class="text-xs font-bold text-slate-200">Registrar Chofer</h3>
+                <input type="text" id="chofer-nombre" placeholder="Nombre completo" class="w-full bg-slate-900 border border-slate-700 rounded px-2.5 py-1.5 text-xs text-white">
+                <input type="email" id="chofer-email" placeholder="Correo electrónico" class="w-full bg-slate-900 border border-slate-700 rounded px-2.5 py-1.5 text-xs text-white">
+                <input type="password" id="chofer-pass" placeholder="Contraseña de acceso" class="w-full bg-slate-900 border border-slate-700 rounded px-2.5 py-1.5 text-xs text-white">
+                <button onclick="agregarChofer()" class="w-full bg-emerald-600 hover:bg-emerald-500 text-white text-xs font-bold py-2 rounded transition">
+                    + Crear Cuenta de Chofer
+                </button>
+            </div>
+
+            <div>
+                <h3 class="text-xs font-bold text-slate-400 mb-2">Choferes a Cargo (<span id="cant-choferes">0</span>)</h3>
+                <ul id="lista-choferes" class="space-y-2"></ul>
+            </div>
+        </div>
+
+        <!-- PANEL DE ADMINISTRADOR GENERAL -->
+        <div id="panel-admin" class="flex-1 p-4 space-y-4 overflow-y-auto custom-scrollbar hidden">
+            <div class="flex justify-between items-center border-b border-slate-800 pb-3">
+                <span class="text-xs font-semibold text-rose-400">🛡️ Panel Administrador</span>
+                <button onclick="volverARutas()" class="text-xs text-blue-400 hover:underline">Ver Horarios</button>
+            </div>
+            <div class="bg-slate-800/60 p-3 rounded-xl border border-slate-700/60 space-y-2">
+                <p class="text-xs text-slate-300">Control global del terminal activo.</p>
+                <div class="text-[11px] text-slate-400 space-y-1">
+                    <p>• Correo principal: <strong>bsredpanguipulli@gmail.com</strong></p>
+                    <p>• Estado Base de Datos: <span class="text-emerald-400 font-bold">Conectada a Supabase</span></p>
+                </div>
+            </div>
         </div>
 
     </aside>
 
-    <!-- PANEL DERECHO: MAPA DE CARRETERAS EN TIEMPO REAL -->
+    <!-- PANEL DERECHO: MAPA EN TIEMPO REAL -->
     <main class="flex-1 h-3/5 md:h-full relative bg-slate-950">
         <div id="map" class="w-full h-full"></div>
 
-        <!-- Leyenda de Estado -->
         <div class="absolute top-4 right-4 z-[1000] bg-slate-900/90 border border-slate-800 p-3 rounded-xl backdrop-blur text-xs space-y-1 shadow-lg">
             <div class="flex items-center gap-2">
                 <span id="indicador-pulso" class="w-3 h-3 rounded-full bg-blue-500 animate-pulse"></span>
@@ -83,21 +115,76 @@
         </div>
     </main>
 
+    <!-- MODAL DE AUTENTICACIÓN (LOGIN Y REGISTRO) -->
+    <div id="modal-auth" class="fixed inset-0 bg-slate-950/80 backdrop-blur-sm z-50 flex items-center justify-center p-4 hidden">
+        <div class="w-full max-w-sm bg-slate-900 border border-slate-800 rounded-2xl p-6 shadow-2xl relative">
+            <button onclick="cerrarModalAuth()" class="absolute top-4 right-4 text-slate-400 hover:text-white">✕</button>
+
+            <!-- INICIO DE SESIÓN -->
+            <form id="form-login" class="space-y-4" onsubmit="procesarLogin(event)">
+                <h2 class="text-xl font-bold text-white text-center">Iniciar Sesión</h2>
+                <div>
+                    <label class="block text-xs text-slate-300 mb-1">Correo Electrónico</label>
+                    <input type="email" id="login-email" required placeholder="correo@ejemplo.com"
+                           class="w-full bg-slate-800 border border-slate-700 rounded-lg px-3 py-2 text-sm text-white focus:outline-none focus:border-blue-500">
+                </div>
+                <div>
+                    <label class="block text-xs text-slate-300 mb-1">Contraseña</label>
+                    <input type="password" id="login-password" required placeholder="••••••••"
+                           class="w-full bg-slate-800 border border-slate-700 rounded-lg px-3 py-2 text-sm text-white focus:outline-none focus:border-blue-500">
+                </div>
+                <button type="submit" class="w-full bg-blue-600 hover:bg-blue-500 text-white font-semibold py-2 rounded-lg text-sm transition">
+                    Ingresar
+                </button>
+                <p class="text-center text-xs text-slate-400">
+                    ¿Sin cuenta? <button type="button" onclick="alternarAuth('registro')" class="text-blue-400 hover:underline">Regístrate</button>
+                </p>
+            </form>
+
+            <!-- REGISTRO CONECTADO A BASE DE DATOS -->
+            <form id="form-registro" class="space-y-4 hidden" onsubmit="procesarRegistro(event)">
+                <h2 class="text-xl font-bold text-white text-center">Crear Cuenta</h2>
+                <div>
+                    <label class="block text-xs text-slate-300 mb-1">Nombre Completo / Empresa</label>
+                    <input type="text" id="reg-nombre" required placeholder="Ej: Juan Pérez o Buses Lago"
+                           class="w-full bg-slate-800 border border-slate-700 rounded-lg px-3 py-2 text-sm text-white focus:outline-none focus:border-blue-500">
+                </div>
+                <div>
+                    <label class="block text-xs text-slate-300 mb-1">Correo Electrónico</label>
+                    <input type="email" id="reg-email" required placeholder="correo@ejemplo.com"
+                           class="w-full bg-slate-800 border border-slate-700 rounded-lg px-3 py-2 text-sm text-white focus:outline-none focus:border-blue-500">
+                </div>
+                <div>
+                    <label class="block text-xs text-slate-300 mb-1">Tipo de Cuenta</label>
+                    <select id="reg-rol" class="w-full bg-slate-800 border border-slate-700 rounded-lg px-3 py-2 text-sm text-white focus:outline-none focus:border-blue-500">
+                        <option value="pasajero">Pasajero / Usuario Normal</option>
+                        <option value="empresa">Empresa de Transportes</option>
+                    </select>
+                </div>
+                <div>
+                    <label class="block text-xs text-slate-300 mb-1">Contraseña</label>
+                    <input type="password" id="reg-password" required placeholder="••••••••"
+                           class="w-full bg-slate-800 border border-slate-700 rounded-lg px-3 py-2 text-sm text-white focus:outline-none focus:border-blue-500">
+                </div>
+                <button type="submit" class="w-full bg-emerald-600 hover:bg-emerald-500 text-white font-semibold py-2 rounded-lg text-sm transition">
+                    Guardar Registro
+                </button>
+                <p class="text-center text-xs text-slate-400">
+                    ¿Ya tienes cuenta? <button type="button" onclick="alternarAuth('login')" class="text-blue-400 hover:underline">Inicia Sesión</button>
+                </p>
+            </form>
+        </div>
+    </div>
+
+    <!-- LÓGICA JAVASCRIPT -->
     <script>
-        // COORDENADAS GPS DE TODAS LAS LOCALIDADES
         const COORDENADAS = {
             "panguipulli": [-39.6430, -72.3312],
             "coñaripe":    [-39.5532, -71.9790],
             "los lagos":   [-39.8511, -72.8228],
             "villarrica":  [-39.2822, -72.2272],
-            "huerquehue":  [-39.6631, -72.2415],
             "liquiñe":     [-39.7360, -71.8540],
-            "choshuenco":  [-39.8402, -72.0833],
-            "neltume":     [-39.8456, -71.9567],
             "puerto fuy":  [-39.8660, -71.8885],
-            "lanco":       [-39.4475, -72.7856],
-            "lican ray":   [-39.4828, -72.1528],
-            "temuco":      [-38.7359, -72.5904],
             "valdivia":    [-39.8142, -73.2459]
         };
 
@@ -105,43 +192,113 @@
         const PALETA_LLEGADAS = ["#f59e0b", "#ec4899", "#f97316", "#ef4444", "#eab308"];
 
         const map = L.map('map').setView(COORDENADAS["panguipulli"], 10);
-        L.tileLayer('https://{s}.basemaps.cartocdn.com/dark_all/{z}/{x}/{y}{r}.png', {
-            maxZoom: 19,
-            attribution: '&copy; OpenStreetMap &copy; CARTO'
-        }).addTo(map);
+        L.tileLayer('https://{s}.basemaps.cartocdn.com/dark_all/{z}/{x}/{y}{r}.png', { maxZoom: 19 }).addTo(map);
 
         let currentTab = 'salidas';
         let datosHorarios = [];
         let capasRutas = {};
         let itemSeleccionadoIndex = null;
-        let cacheRutasOSRM = {};
+        let usuarioSesion = null;
 
-        function crearIconoBus(color) {
-            return L.divIcon({
-                html: `<div style="background-color: ${color};" class="text-white rounded-full p-1 shadow-xl border-2 border-slate-900 flex items-center justify-center w-8 h-8 text-xs font-bold transition-transform hover:scale-125">🚌</div>`,
-                className: '',
-                iconSize: [32, 32],
-                iconAnchor: [16, 16]
-            });
+        function abrirModalAuth() { document.getElementById('modal-auth').classList.remove('hidden'); }
+        function cerrarModalAuth() { document.getElementById('modal-auth').classList.add('hidden'); }
+        
+        function alternarAuth(vista) {
+            document.getElementById('form-login').classList.toggle('hidden', vista !== 'login');
+            document.getElementById('form-registro').classList.toggle('hidden', vista !== 'registro');
         }
 
-        async function obtenerRutaOSRM(origenGPS, destinoGPS) {
-            const key = `${origenGPS.join(',')}-${destinoGPS.join(',')}`;
-            if (cacheRutasOSRM[key]) return cacheRutasOSRM[key];
+        function procesarLogin(e) {
+            e.preventDefault();
+            const email = document.getElementById('login-email').value;
+            const pass = document.getElementById('login-password').value;
 
-            const url = `https://router.project-osrm.org/route/v1/driving/${origenGPS[1]},${origenGPS[0]};${destinoGPS[1]},${destinoGPS[0]}?overview=full&geometries=geojson`;
-            try {
-                const res = await fetch(url);
-                const data = await res.json();
-                if (data.routes && data.routes.length > 0) {
-                    const coords = data.routes[0].geometry.coordinates.map(c => [c[1], c[0]]);
-                    cacheRutasOSRM[key] = coords;
-                    return coords;
-                }
-            } catch (e) {
-                console.warn("Error OSRM, usando trayectoria directa:", e);
+            if (email === "bsredpanguipulli@gmail.com" && pass === "csgo775599") {
+                usuarioSesion = { rol: "admin", nombre: "Admin General", email };
+            } else if (email.includes("empresa")) {
+                usuarioSesion = { rol: "empresa", nombre: "Empresa Transportes", email };
+            } else {
+                usuarioSesion = { rol: "pasajero", nombre: "Pasajero", email };
             }
-            return [origenGPS, destinoGPS];
+
+            actualizarInterfazSesion();
+            cerrarModalAuth();
+        }
+
+        async function procesarRegistro(e) {
+            e.preventDefault();
+            const payload = {
+                nombre: document.getElementById('reg-nombre').value,
+                email: document.getElementById('reg-email').value,
+                password: document.getElementById('reg-password').value,
+                rol: document.getElementById('reg-rol').value
+            };
+
+            try {
+                const res = await fetch('/api/registro', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify(payload)
+                });
+
+                if (res.ok) {
+                    alert('¡Cuenta creada e insertada en Supabase!');
+                    usuarioSesion = { rol: payload.rol, nombre: payload.nombre, email: payload.email };
+                    actualizarInterfazSesion();
+                    cerrarModalAuth();
+                } else {
+                    alert('Error al crear usuario en la base de datos.');
+                }
+            } catch (err) {
+                alert('Ocurrió un error de conexión con la base de datos.');
+            }
+        }
+
+        function actualizarInterfazSesion() {
+            const btn = document.getElementById('btn-cuenta-header');
+            const info = document.getElementById('info-usuario-head');
+
+            if (!usuarioSesion) {
+                info.innerText = "Modo Pasajero (Invitado)";
+                btn.innerText = "🔑 Ingresar";
+                btn.onclick = abrirModalAuth;
+                volverARutas();
+                return;
+            }
+
+            btn.innerText = "🚪 Salir";
+            btn.onclick = cerrarSesion;
+
+            if (usuarioSesion.rol === 'admin') {
+                info.innerText = `🛡️ Admin: ${usuarioSesion.nombre}`;
+                mostrarPanel('admin');
+            } else if (usuarioSesion.rol === 'empresa') {
+                info.innerText = `🏢 Empresa: ${usuarioSesion.nombre}`;
+                mostrarPanel('empresa');
+            } else {
+                info.innerText = `👤 Pasajero: ${usuarioSesion.nombre}`;
+                volverARutas();
+            }
+        }
+
+        function cerrarSesion() {
+            usuarioSesion = null;
+            actualizarInterfazSesion();
+        }
+
+        function mostrarPanel(panel) {
+            document.getElementById('vista-rutas-publica').classList.add('hidden');
+            document.getElementById('panel-empresa').classList.add('hidden');
+            document.getElementById('panel-admin').classList.add('hidden');
+
+            if (panel === 'empresa') document.getElementById('panel-empresa').classList.remove('hidden');
+            if (panel === 'admin') document.getElementById('panel-admin').classList.remove('hidden');
+        }
+
+        function volverARutas() {
+            document.getElementById('panel-empresa').classList.add('hidden');
+            document.getElementById('panel-admin').classList.add('hidden');
+            document.getElementById('vista-rutas-publica').classList.remove('hidden');
         }
 
         async function cargarDatosAPI() {
@@ -150,9 +307,8 @@
                 const res = await fetch(`/api/horarios?tab=${currentTab}`);
                 datosHorarios = await res.json();
                 renderizarLista();
-                await actualizarMapa();
+                actualizarMapa();
             } catch (err) {
-                console.error("Error API:", err);
                 document.getElementById("estado-mapa").innerText = "Error de conexión";
             }
         }
@@ -161,81 +317,31 @@
             if (currentTab === tab) return;
             currentTab = tab;
             itemSeleccionadoIndex = null;
-
-            const btnSalidas = document.getElementById('tab-salidas');
-            const btnLlegadas = document.getElementById('tab-llegadas');
-            const txtTab = document.getElementById('txt-tab-actual');
-
-            if (tab === 'salidas') {
-                btnSalidas.className = 'flex-1 py-1.5 rounded-md bg-blue-600 text-white transition shadow font-bold';
-                btnLlegadas.className = 'flex-1 py-1.5 rounded-md text-slate-400 hover:text-white transition';
-                txtTab.innerText = "Salidas";
-            } else {
-                btnLlegadas.className = 'flex-1 py-1.5 rounded-md bg-amber-600 text-white transition shadow font-bold';
-                btnSalidas.className = 'flex-1 py-1.5 rounded-md text-slate-400 hover:text-white transition';
-                txtTab.innerText = "Llegadas";
-            }
-
+            document.getElementById('tab-salidas').className = tab === 'salidas' ? 'flex-1 py-1.5 rounded-md bg-blue-600 text-white font-bold' : 'flex-1 py-1.5 text-slate-400';
+            document.getElementById('tab-llegadas').className = tab === 'llegadas' ? 'flex-1 py-1.5 rounded-md bg-amber-600 text-white font-bold' : 'flex-1 py-1.5 text-slate-400';
+            document.getElementById('txt-tab-actual').innerText = tab === 'salidas' ? "Salidas" : "Llegadas";
             cargarDatosAPI();
-        }
-
-        function obtenerItemsFiltrados() {
-            const q = document.getElementById("busqueda").value.toLowerCase().trim();
-            return datosHorarios.filter(item => {
-                if (!q) return true;
-                const textoSearch = `${item.empresa} ${item.origen} ${item.destino} ${item.anden} ${item.sector} ${item.dias}`.toLowerCase();
-                return textoSearch.includes(q);
-            });
-        }
-
-        function onBusquedaChange() {
-            itemSeleccionadoIndex = null;
-            renderizarLista();
-            actualizarMapa();
         }
 
         function renderizarLista() {
             const contenedor = document.getElementById("lista-horarios");
             contenedor.innerHTML = "";
-
-            const itemsVisibles = obtenerItemsFiltrados();
-
-            if (itemsVisibles.length === 0) {
-                contenedor.innerHTML = `
-                    <div class="text-center py-8 text-slate-500 text-xs">
-                        No se encontraron ${currentTab} disponibles.
-                    </div>`;
-                return;
-            }
-
             const paleta = currentTab === 'salidas' ? PALETA_SALIDAS : PALETA_LLEGADAS;
 
-            itemsVisibles.forEach((item) => {
-                const origIndex = datosHorarios.indexOf(item);
-                const estaSeleccionado = itemSeleccionadoIndex === origIndex;
-                const color = paleta[origIndex % paleta.length];
-
+            datosHorarios.forEach((item, index) => {
+                const color = paleta[index % paleta.length];
                 contenedor.innerHTML += `
-                <div onclick="seleccionarHorario(${origIndex})"
+                <div onclick="seleccionarHorario(${index})"
                      class="p-4 rounded-xl border transition cursor-pointer flex justify-between items-center ${
-                         estaSeleccionado 
-                         ? (currentTab === 'salidas' ? 'bg-slate-800 border-blue-500 shadow-xl ring-2 ring-blue-500/30' : 'bg-slate-800 border-amber-500 shadow-xl ring-2 ring-amber-500/30') 
-                         : 'bg-slate-800/60 border-slate-700/60 hover:border-slate-500 hover:bg-slate-800'
+                         itemSeleccionadoIndex === index ? 'bg-slate-800 border-blue-500 ring-2 ring-blue-500/30' : 'bg-slate-800/60 border-slate-700/60 hover:border-slate-500'
                      }">
                     <div class="space-y-1">
                         <div class="flex items-center gap-2">
-                            <span class="w-3 h-3 rounded-full flex-shrink-0" style="background-color: ${color}"></span>
+                            <span class="w-3 h-3 rounded-full" style="background-color: ${color}"></span>
                             <h3 class="font-bold text-white text-sm">${item.empresa}</h3>
-                            <span class="text-[10px] px-2 py-0.5 rounded-full bg-slate-700 text-slate-300 font-mono">Andén ${item.anden}</span>
+                            <span class="text-[10px] px-2 py-0.5 rounded-full bg-slate-700 text-slate-300">Andén ${item.anden}</span>
                         </div>
-                        <p class="text-xs text-slate-300">
-                            ${item.origen} ➔ <span class="font-bold text-white">${item.destino}</span>
-                        </p>
-                        <div class="flex items-center gap-2 text-[11px] text-slate-400">
-                            <span>🗓️ ${item.dias}</span>
-                            <span>•</span>
-                            <span class="text-slate-300">Sector ${item.sector}</span>
-                        </div>
+                        <p class="text-xs text-slate-300">${item.origen} ➔ <span class="font-bold text-white">${item.destino}</span></p>
                     </div>
                     <div class="text-right pl-2">
                         <span class="text-xs text-slate-400 block">${currentTab === 'salidas' ? 'Salida' : 'Llegada'}</span>
@@ -245,113 +351,37 @@
             });
         }
 
-        async function actualizarMapa() {
+        function actualizarMapa() {
             Object.keys(capasRutas).forEach(k => {
-                if (capasRutas[k].intervalo) clearInterval(capasRutas[k].intervalo);
                 map.removeLayer(capasRutas[k].polyline);
-                map.removeLayer(capasRutas[k].marker);
             });
             capasRutas = {};
 
-            let itemsAMostrar = [];
-            if (itemSeleccionadoIndex !== null && datosHorarios[itemSeleccionadoIndex]) {
-                itemsAMostrar = [{ item: datosHorarios[itemSeleccionadoIndex], index: itemSeleccionadoIndex }];
-            } else {
-                const filtrados = obtenerItemsFiltrados();
-                itemsAMostrar = filtrados.map(item => ({ item, index: datosHorarios.indexOf(item) }));
-            }
-
-            if (itemsAMostrar.length === 0) {
-                document.getElementById("estado-mapa").innerText = "Sin rutas activas";
-                document.getElementById("info-detalle-ruta").classList.add("hidden");
-                return;
-            }
-
-            document.getElementById("estado-mapa").innerText = `Cargando ${itemsAMostrar.length} ruta(s)...`;
-
             const paleta = currentTab === 'salidas' ? PALETA_SALIDAS : PALETA_LLEGADAS;
-            const esLlegada = currentTab === 'llegadas';
-            let todasLasCoordenadas = [];
+            let coordsTotales = [];
 
-            for (const entry of itemsAMostrar) {
-                const h = entry.item;
-                const idx = entry.index;
-
-                const origenKey = (h.origen || "").toLowerCase();
-                const destinoKey = (h.destino || "").toLowerCase();
-
-                const origenGPS = COORDENADAS[origenKey] || COORDENADAS["panguipulli"];
-                const destinoGPS = COORDENADAS[destinoKey] || COORDENADAS["panguipulli"];
-
-                if (origenGPS[0] === destinoGPS[0] && origenGPS[1] === destinoGPS[1]) continue;
-
-                const coords = await obtenerRutaOSRM(origenGPS, destinoGPS);
-                todasLasCoordenadas.push(...coords);
-
-                const color = paleta[idx % paleta.length];
-
-                const polyline = L.polyline(coords, { 
-                    color: color, 
-                    weight: itemSeleccionadoIndex === idx ? 6 : 4, 
-                    opacity: itemSeleccionadoIndex === idx ? 1.0 : 0.8,
-                    dashArray: esLlegada ? '8, 8' : null
-                }).addTo(map);
-
-                const marker = L.marker(coords[0], { icon: crearIconoBus(color) }).addTo(map);
-
-                polyline.bindTooltip(`<b>${h.empresa}</b><br>${h.origen} ➔ ${h.destino}<br>Hora: ${h.salida} | Andén ${h.anden}`, { sticky: true });
+            datosHorarios.forEach((item, index) => {
+                const origenGPS = COORDENADAS[(item.origen || "").toLowerCase()] || COORDENADAS["panguipulli"];
+                const destinoGPS = COORDENADAS[(item.destino || "").toLowerCase()] || COORDENADAS["panguipulli"];
                 
-                polyline.on('click', () => seleccionarHorario(idx));
-                marker.on('click', () => seleccionarHorario(idx));
+                const ruta = [origenGPS, destinoGPS];
+                coordsTotales.push(...ruta);
+                const color = paleta[index % paleta.length];
 
-                capasRutas[idx] = { polyline, marker, coords, pasoActual: 0, intervalo: null };
-                iniciarAnimacionBus(idx);
+                const polyline = L.polyline(ruta, { color, weight: itemSeleccionadoIndex === index ? 6 : 3 }).addTo(map);
+                capasRutas[index] = { polyline };
+            });
+
+            if (coordsTotales.length > 0) {
+                map.fitBounds(L.latLngBounds(coordsTotales), { padding: [40, 40] });
             }
-
-            if (todasLasCoordenadas.length > 0) {
-                const bounds = L.latLngBounds(todasLasCoordenadas);
-                map.fitBounds(bounds, { padding: [50, 50], maxZoom: 12 });
-            }
-
-            const numRutas = Object.keys(capasRutas).length;
-            const pulso = document.getElementById("indicador-pulso");
-            const infoDetalle = document.getElementById("info-detalle-ruta");
-
-            pulso.className = `w-3 h-3 rounded-full animate-pulse ${esLlegada ? 'bg-amber-500' : 'bg-blue-500'}`;
-
-            if (itemSeleccionadoIndex !== null) {
-                const sel = datosHorarios[itemSeleccionadoIndex];
-                document.getElementById("estado-mapa").innerText = `Seleccionado: ${sel.empresa}`;
-                infoDetalle.innerHTML = `${sel.origen} ➔ ${sel.destino} | ${sel.salida} hrs (Andén ${sel.anden})`;
-                infoDetalle.classList.remove("hidden");
-            } else {
-                document.getElementById("estado-mapa").innerText = `${numRutas} recorrido(s) de ${currentTab.toUpperCase()} en mapa`;
-                infoDetalle.classList.add("hidden");
-            }
-        }
-
-        function iniciarAnimacionBus(index) {
-            const capa = capasRutas[index];
-            if (!capa || !capa.coords || capa.coords.length === 0) return;
-
-            capa.intervalo = setInterval(() => {
-                if (capa.pasoActual < capa.coords.length) {
-                    capa.marker.setLatLng(capa.coords[capa.pasoActual]);
-                    capa.pasoActual++;
-                } else {
-                    capa.pasoActual = 0;
-                }
-            }, 250);
+            document.getElementById("estado-mapa").innerText = `${datosHorarios.length} rutas cargadas`;
         }
 
         function seleccionarHorario(index) {
             itemSeleccionadoIndex = itemSeleccionadoIndex === index ? null : index;
             renderizarLista();
             actualizarMapa();
-        }
-
-        if ("serviceWorker" in navigator) {
-            navigator.serviceWorker.register("sw.js").catch(console.error);
         }
 
         cargarDatosAPI();
