@@ -1,0 +1,73 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Mi Perfil - Terminal Panguipulli</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+</head>
+<body class="bg-slate-950 text-slate-100 min-h-screen flex flex-col items-center justify-center p-4">
+
+    <div class="w-full max-w-md bg-slate-900 border border-slate-800 rounded-2xl p-6 shadow-2xl space-y-6">
+        <div class="flex items-center justify-between border-b border-slate-800 pb-4">
+            <h1 class="text-lg font-bold text-white flex items-center gap-2">👤 Mi Perfil</h1>
+            <a href="/" class="text-xs text-blue-400 hover:underline">⬅️ Volver al Inicio</a>
+        </div>
+
+        <div class="flex items-center gap-4 bg-slate-800/50 p-4 rounded-xl border border-slate-700/50">
+            <div id="perfil-avatar" class="w-12 h-12 rounded-full bg-blue-600/30 border border-blue-500 flex items-center justify-center text-xl font-bold text-blue-400">
+                U
+            </div>
+            <div>
+                <h2 id="perfil-nombre" class="text-base font-bold text-white">Cargando...</h2>
+                <p id="perfil-email" class="text-xs text-slate-400">correo@ejemplo.com</p>
+            </div>
+        </div>
+
+        <div class="space-y-3 text-xs">
+            <div class="flex justify-between py-2 border-b border-slate-800">
+                <span class="text-slate-400">Estatus de Cuenta:</span>
+                <span id="perfil-rol-badge" class="px-2.5 py-1 rounded font-bold bg-slate-700 text-slate-300">Cargando...</span>
+            </div>
+            <div class="flex justify-between py-2 border-b border-slate-800">
+                <span class="text-slate-400">Sistema Conectado:</span>
+                <span class="text-emerald-400 font-semibold">Supabase (Activo)</span>
+            </div>
+        </div>
+
+        <button onclick="cerrarSesion()" class="w-full bg-rose-600 hover:bg-rose-500 text-white font-semibold py-2 rounded-lg text-xs transition">
+            🚪 Cerrar Sesión
+        </button>
+    </div>
+
+    <script>
+        // Aquí puedes recuperar los datos del usuario logueado (por ejemplo, mediante localStorage o una petición a tu API)
+        const usuarioSesion = JSON.parse(localStorage.getItem('usuarioSesion')) || {
+            nombre: "Invitado",
+            email: "invitado@terminal.cl",
+            rol: "pasajero"
+        };
+
+        document.getElementById('perfil-nombre').innerText = usuarioSesion.nombre;
+        document.getElementById('perfil-email').innerText = usuarioSesion.email;
+        document.getElementById('perfil-avatar').innerText = usuarioSesion.nombre.charAt(0).toUpperCase();
+
+        const badge = document.getElementById('perfil-rol-badge');
+        if (usuarioSesion.rol === 'admin') {
+            badge.innerText = "Administrador";
+            badge.className = "px-2.5 py-1 rounded font-bold bg-rose-500/20 text-rose-400 border border-rose-500/30";
+        } else if (usuarioSesion.rol === 'empresa') {
+            badge.innerText = "Empresa de Transportes";
+            badge.className = "px-2.5 py-1 rounded font-bold bg-emerald-500/20 text-emerald-400 border border-emerald-500/30";
+        } else {
+            badge.innerText = "Pasajero / Usuario";
+            badge.className = "px-2.5 py-1 rounded font-bold bg-blue-500/20 text-blue-400 border border-blue-500/30";
+        }
+
+        function cerrarSesion() {
+            localStorage.removeItem('usuarioSesion');
+            window.location.href = '/';
+        }
+    </script>
+</body>
+</html>
