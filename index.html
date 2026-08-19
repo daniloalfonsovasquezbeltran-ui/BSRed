@@ -3,137 +3,278 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Tótem Informativo - Buses Panguipulli</title>
+    <title>Tótem Informativo - Terminal Panguipulli</title>
 
+    <!-- Manifest PWA -->
     <link rel="manifest" href="manifest.json">
 
-    <!-- Tailwind CDN -->
+    <!-- Tailwind CSS -->
     <script src="https://cdn.tailwindcss.com"></script>
+    
+    <!-- Leaflet CSS & JS para Mapa Interactivo -->
+    <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
+    <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
 
     <style>
-        body {
-            font-family: system-ui, sans-serif;
-            background: #f3f4f6;
-        }
+        .custom-scrollbar::-webkit-scrollbar { width: 5px; }
+        .custom-scrollbar::-webkit-scrollbar-thumb { background: #334155; border-radius: 4px; }
     </style>
 </head>
-<body class="min-h-screen flex flex-col">
+<body class="bg-slate-950 text-slate-100 h-screen w-screen overflow-hidden flex flex-col md:flex-row">
 
-    <!-- HEADER -->
-    <header class="bg-blue-700 text-white p-4 text-center text-xl font-bold shadow-md">
-        Horarios de buses – Terminal Panguipulli
-    </header>
+    <!-- PANEL IZQUIERDO: CONTROLES, TABLA Y FILTROS -->
+    <aside class="w-full md:w-[420px] h-2/5 md:h-full bg-slate-900 border-r border-slate-800 flex flex-col z-10 shadow-2xl">
+        
+        <!-- Header -->
+        <header class="p-4 border-b border-slate-800 bg-slate-900 flex items-center justify-between">
+            <div>
+                <h1 class="text-lg font-bold text-white flex items-center gap-2">
+                    🚌 Terminal Panguipulli
+                </h1>
+                <p class="text-xs text-slate-400">Horarios y monitoreo de rutas en vivo</p>
+            </div>
+            <img src="logo.jpg" alt="Logo" class="h-10 w-10 object-contain rounded-lg border border-slate-700" onerror="this.style.display='none'">
+        </header>
 
-    <!-- BÚSQUEDA -->
-    <div class="p-4">
-        <input id="busqueda" type="search"
-               placeholder="Buscar origen, destino, empresa, etc..."
-               class="w-full p-3 rounded-lg border border-gray-300 shadow-sm outline-none">
-    </div>
+        <!-- Filtros y Búsqueda -->
+        <div class="p-4 border-b border-slate-800 space-y-3">
+            <!-- Pestañas Salidas / Llegadas -->
+            <div class="flex bg-slate-800 p-1 rounded-lg text-xs font-semibold">
+                <button id="tab-salidas" onclick="cambiarTab('salidas')" 
+                        class="flex-1 py-1.5 rounded-md bg-blue-600 text-white transition shadow">Salidas</button>
+                <button id="tab-llegadas" onclick="cambiarTab('llegadas')" 
+                        class="flex-1 py-1.5 rounded-md text-slate-400 hover:text-white transition">Llegadas</button>
+            </div>
 
-    <!-- LISTA DE HORARIOS -->
-    <main class="px-4 pb-16">
-        <table class="w-full rounded-lg overflow-hidden shadow bg-white text-sm">
-            <thead class="bg-blue-600 text-white">
-                <tr>
-                    <th class="p-2">Empresa</th>
-                    <th class="p-2">Origen</th>
-                    <th class="p-2">Destino</th>
-                    <th class="p-2">Salida</th>
-                    <th class="p-2">Andén</th>
-                </tr>
-            </thead>
-            <tbody id="lista-horarios"></tbody>
-        </table>
+            <!-- Caja de búsqueda -->
+            <input id="busqueda" type="search" placeholder="Buscar destino, empresa o andén..."
+                   class="w-full bg-slate-800 border border-slate-700 rounded-lg px-3 py-2 text-sm text-white focus:outline-none focus:border-blue-500">
+            
+            <!-- Restaurar Mapa -->
+            <button id="btn-reset" onclick="seleccionarHorario(null)" 
+                    class="w-full py-1.5 px-3 bg-slate-800 hover:bg-slate-700 text-blue-400 text-xs font-semibold rounded-lg border border-slate-700 transition">
+                🌐 Ver todos los recorridos en el mapa
+            </button>
+        </div>
+
+        <!-- Contenedor de Horarios -->
+        <div id="lista-horarios" class="flex-1 overflow-y-auto p-4 space-y-3 custom-scrollbar">
+            <!-- Se carga dinámicamente desde /api/horarios -->
+        </div>
+
+    </aside>
+
+    <!-- PANEL DERECHO: MAPA DE CARRETERAS EN TIEMPO REAL -->
+    <main class="flex-1 h-3/5 md:h-full relative bg-slate-950">
+        <div id="map" class="w-full h-full"></div>
+
+        <!-- Leyenda de Estado -->
+        <div class="absolute top-4 right-4 z-[1000] bg-slate-900/90 border border-slate-800 p-3 rounded-xl backdrop-blur text-xs space-y-1 shadow-lg">
+            <div class="flex items-center gap-2">
+                <span class="w-3 h-3 rounded-full bg-emerald-500 animate-pulse"></span>
+                <span id="estado-mapa">Conectando con servidor...</span>
+            </div>
+        </div>
     </main>
 
-    <!-- PWA -->
     <script>
+        // 1. COORDENADAS GPS DE LOS SECTORES DEFINIDOS EN APP.PY
+        const COORDENADAS = {
+            "panguipulli": [-39.6430, -72.3312],
+            "coñaripe": [-39.5532, -71.9790],
+            "los lagos": [-39.8511, -72.8228],
+            "villarrica": [-39.2822, -72.2272],
+            "huerquehue": [-39.6631, -72.2415]
+        };
+
+        const COLORES = ["#3b82f6", "#10b981", "#f59e0b", "#ec4899", "#8b5cf6", "#06b6d4"];
+
+        // 2. INICIALIZAR MAPA
+        const map = L.map('map').setView(COORDENADAS["panguipulli"], 10);
+        L.tileLayer('https://{s}.basemaps.cartocdn.com/dark_all/{z}/{x}/{y}{r}.png', {
+            maxZoom: 19,
+            attribution: '&copy; OpenStreetMap &copy; CARTO'
+        }).addTo(map);
+
+        let currentTab = 'salidas';
+        let datosHorarios = [];
+        let capasRutas = {};
+        let itemSeleccionadoIndex = null;
+
+        function crearIconoBus(color) {
+            return L.divIcon({
+                html: `<div style="background-color: ${color};" class="text-white rounded-full p-1 shadow-lg border-2 border-white flex items-center justify-center w-7 h-7 text-xs">🚌</div>`,
+                className: '',
+                iconSize: [28, 28],
+                iconAnchor: [14, 14]
+            });
+        }
+
+        // 3. RUTEO POR CARRETERA REAL (OSRM API)
+        async function obtenerRutaOSRM(origenGPS, destinoGPS) {
+            const url = `https://router.project-osrm.org/route/v1/driving/${origenGPS[1]},${origenGPS[0]};${destinoGPS[1]},${destinoGPS[0]}?overview=full&geometries=geojson`;
+            try {
+                const res = await fetch(url);
+                const data = await res.json();
+                return data.routes[0].geometry.coordinates.map(c => [c[1], c[0]]);
+            } catch (e) {
+                return [origenGPS, destinoGPS];
+            }
+        }
+
+        // 4. CONSUMIR LA API DE FLASK (/api/horarios)
+        async function cargarDatosAPI() {
+            try {
+                const res = await fetch(`/api/horarios?tab=${currentTab}`);
+                datosHorarios = await res.json();
+                renderizarLista();
+                await actualizarMapa();
+            } catch (err) {
+                console.error("Error al obtener los horarios desde app.py:", err);
+            }
+        }
+
+        function cambiarTab(tab) {
+            currentTab = tab;
+            document.getElementById('tab-salidas').className = tab === 'salidas' 
+                ? 'flex-1 py-1.5 rounded-md bg-blue-600 text-white transition shadow' 
+                : 'flex-1 py-1.5 rounded-md text-slate-400 hover:text-white transition';
+            document.getElementById('tab-llegadas').className = tab === 'llegadas' 
+                ? 'flex-1 py-1.5 rounded-md bg-blue-600 text-white transition shadow' 
+                : 'flex-1 py-1.5 rounded-md text-slate-400 hover:text-white transition';
+            
+            itemSeleccionadoIndex = null;
+            cargarDatosAPI();
+        }
+
+        // 5. RENDERIZAR LISTA DE SALIDAS O LLEGADAS
+        function renderizarLista() {
+            const contenedor = document.getElementById("lista-horarios");
+            contenedor.innerHTML = "";
+            const q = document.getElementById("busqueda").value.toLowerCase();
+
+            datosHorarios.forEach((item, index) => {
+                const textoSearch = `${item.empresa} ${item.origen} ${item.destino} ${item.anden} ${item.sector}`.toLowerCase();
+                if (q && !textoSearch.includes(q)) return;
+
+                const estaSeleccionado = itemSeleccionadoIndex === index;
+                const color = COLORES[index % COLORES.length];
+
+                contenedor.innerHTML += `
+                <div onclick="seleccionarHorario(${index})"
+                     class="p-4 rounded-xl border transition cursor-pointer flex justify-between items-center ${
+                         estaSeleccionado 
+                         ? 'bg-slate-800 border-blue-500 shadow-lg scale-[1.01]' 
+                         : 'bg-slate-800/50 border-slate-700/60 hover:border-slate-500'
+                     }">
+                    <div>
+                        <div class="flex items-center gap-2">
+                            <span class="w-3 h-3 rounded-full" style="background-color: ${color}"></span>
+                            <h3 class="font-bold text-white text-sm">${item.empresa}</h3>
+                            <span class="text-[10px] px-2 py-0.5 rounded-full bg-slate-700 text-slate-300">Andén ${item.anden}</span>
+                        </div>
+                        <p class="text-xs text-slate-300 mt-1">
+                            ${item.origen} ➔ <span class="font-semibold text-white">${item.destino}</span>
+                        </p>
+                        <p class="text-[11px] text-slate-400 mt-0.5">${item.dias}</p>
+                    </div>
+                    <div class="text-right">
+                        <span class="text-xl font-bold text-white font-mono">${item.salida}</span>
+                    </div>
+                </div>`;
+            });
+        }
+
+        // 6. DIBUJAR Y ANIMAR BUSES EN EL MAPA
+        async function actualizarMapa() {
+            // Limpiar mapa
+            Object.keys(capasRutas).forEach(k => {
+                if (capasRutas[k].intervalo) clearInterval(capasRutas[k].intervalo);
+                map.removeLayer(capasRutas[k].polyline);
+                map.removeLayer(capasRutas[k].marker);
+            });
+            capasRutas = {};
+
+            document.getElementById("estado-mapa").innerText = `Cargando rutas de la API...`;
+
+            for (let i = 0; i < datosHorarios.length; i++) {
+                const h = datosHorarios[i];
+                const origenKey = h.origen.toLowerCase();
+                const destinoKey = h.destino.toLowerCase();
+
+                const origenGPS = COORDENADAS[origenKey] || COORDENADAS["panguipulli"];
+                const destinoGPS = COORDENADAS[destinoKey] || COORDENADAS["panguipulli"];
+
+                if (origenGPS[0] === destinoGPS[0] && origenGPS[1] === destinoGPS[1]) continue;
+
+                const coords = await obtenerRutaOSRM(origenGPS, destinoGPS);
+                const color = COLORES[i % COLORES.length];
+
+                const polyline = L.polyline(coords, { color, weight: 4, opacity: 0.8 }).addTo(map);
+                const marker = L.marker(coords[0], { icon: crearIconoBus(color) }).addTo(map);
+
+                polyline.on('click', () => seleccionarHorario(i));
+
+                capasRutas[i] = { polyline, marker, coords, pasoActual: 0, intervalo: null };
+                iniciarAnimacionBus(i);
+            }
+
+            document.getElementById("estado-mapa").innerText = `Mostrando ${Object.keys(capasRutas).length} recorridos activos`;
+        }
+
+        function iniciarAnimacionBus(index) {
+            const capa = capasRutas[index];
+            if (!capa) return;
+            capa.intervalo = setInterval(() => {
+                if (capa.pasoActual < capa.coords.length) {
+                    capa.marker.setLatLng(capa.coords[capa.pasoActual]);
+                    capa.pasoActual++;
+                } else {
+                    capa.pasoActual = 0;
+                }
+            }, 300);
+        }
+
+        // 7. SELECCIONAR O DESSELECCIONAR RUTAS
+        function seleccionarHorario(index) {
+            itemSeleccionadoIndex = index;
+            renderizarLista();
+
+            if (index === null) {
+                document.getElementById("estado-mapa").innerText = "Mostrando todos los recorridos";
+                Object.keys(capasRutas).forEach(k => {
+                    map.addLayer(capasRutas[k].polyline);
+                    map.addLayer(capasRutas[k].marker);
+                });
+                map.setView(COORDENADAS["panguipulli"], 10);
+            } else {
+                const item = datosHorarios[index];
+                document.getElementById("estado-mapa").innerText = `Ruta: ${item.origen} ➔ ${item.destino}`;
+
+                Object.keys(capasRutas).forEach(k => {
+                    const numK = parseInt(k);
+                    if (numK === index) {
+                        map.addLayer(capasRutas[numK].polyline);
+                        map.addLayer(capasRutas[numK].marker);
+                        map.fitBounds(capasRutas[numK].polyline.getBounds(), { padding: [40, 40] });
+                    } else {
+                        map.removeLayer(capasRutas[numK].polyline);
+                        map.removeLayer(capasRutas[numK].marker);
+                    }
+                });
+            }
+        }
+
+        // Búsqueda en vivo
+        document.getElementById("busqueda").addEventListener("input", renderizarLista);
+
+        // Registro de Service Worker (sw.js)
         if ("serviceWorker" in navigator) {
             navigator.serviceWorker.register("sw.js");
         }
+
+        // Iniciar carga de datos
+        cargarDatosAPI();
     </script>
-
-    <!-- CARGA DE HORARIOS DESDE app.py -->
-    <script>
-        async function cargarHorarios() {
-            const res = await fetch("/api/horarios");
-            const json = await res.json();
-
-            const lista = document.getElementById("lista-horarios");
-            lista.innerHTML = "";
-
-            json.data.forEach(h => {
-                lista.innerHTML += `
-                <tr data-horario
-                    data-origen="${h.origen}"
-                    data-destino="${h.destino}"
-                    data-empresa="${h.empresa}"
-                    data-salida="${h.salida}"
-                    class="border-b hover:bg-gray-100">
-                    <td class="p-2">${h.empresa}</td>
-                    <td class="p-2">${h.origen}</td>
-                    <td class="p-2">${h.destino}</td>
-                    <td class="p-2">${h.salida}</td>
-                    <td class="p-2">${h.anden}</td>
-                </tr>`;
-            });
-        }
-        cargarHorarios();
-    </script>
-
-    <!-- ✅ BÚSQUEDA RÁPIDA (NO ALTERA NADA MÁS) -->
-    <script>
-    (function () {
-
-      const stripAccents = s =>
-        (s || "").normalize("NFD").replace(/[\u0300-\u036f]/g, "");
-
-      const norm = s =>
-        stripAccents(String(s || "")).toLowerCase().trim().replace(/\s+/g, " ");
-
-      const tokenize = q => {
-        q = norm(q);
-        const phrases = Array.from(q.matchAll(/"([^"]+)"/g)).map(m => norm(m[1]));
-        const rest = q.replace(/"[^"]+"/g, " ").trim();
-        const words = rest ? rest.split(/\s+/).map(norm) : [];
-        return { phrases, words };
-      };
-
-      const matchText = (text, q) => {
-        const t = norm(text);
-        const { phrases, words } = tokenize(q);
-        for (const ph of phrases) if (!t.includes(ph)) return false;
-        for (const w of words) if (!t.includes(w)) return false;
-        return true;
-      };
-
-      function buildText(el) {
-        let txt = el.innerText || el.textContent || "";
-        for (const a of ["data-origen","data-destino","data-empresa","data-salida","data-anden"])
-          if (el.hasAttribute && el.hasAttribute(a)) txt += " " + el.getAttribute(a);
-        return txt;
-      }
-
-      function quickSearch() {
-        const input = document.getElementById("busqueda");
-        if (!input) return;
-
-        const rows = [...document.querySelectorAll("#lista-horarios [data-horario]")];
-        const index = rows.map(el => ({ el, text: buildText(el) }));
-
-        input.addEventListener("input", () => {
-          const q = input.value;
-          if (!q) return index.forEach(i => i.el.style.display = "");
-          index.forEach(i =>
-            i.el.style.display = matchText(i.text, q) ? "" : "none"
-          );
-        });
-      }
-
-      window.addEventListener("DOMContentLoaded", quickSearch);
-    })();
-    </script>
-
 </body>
 </html>
