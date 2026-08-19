@@ -21,6 +21,10 @@ def obtener_conexion():
 def root():
     return send_from_directory(app.static_folder, 'index.html')
 
+@app.route('/usuario')
+def usuario():
+    return send_from_directory(app.static_folder, 'usuario.html')
+
 # ==========================================
 # ENDPOINTS DE BASE DE DATOS (USUARIOS)
 # ==========================================
