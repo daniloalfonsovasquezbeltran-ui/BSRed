@@ -41,19 +41,24 @@
             <!-- Pestañas Salidas / Llegadas -->
             <div class="flex bg-slate-800 p-1 rounded-lg text-xs font-semibold">
                 <button id="tab-salidas" onclick="cambiarTab('salidas')" 
-                        class="flex-1 py-1.5 rounded-md bg-blue-600 text-white transition shadow">Salidas</button>
+                        class="flex-1 py-1.5 rounded-md bg-blue-600 text-white transition shadow font-bold">
+                    📤 Salidas
+                </button>
                 <button id="tab-llegadas" onclick="cambiarTab('llegadas')" 
-                        class="flex-1 py-1.5 rounded-md text-slate-400 hover:text-white transition">Llegadas</button>
+                        class="flex-1 py-1.5 rounded-md text-slate-400 hover:text-white transition">
+                    📥 Llegadas
+                </button>
             </div>
 
             <!-- Caja de búsqueda -->
             <input id="busqueda" type="search" placeholder="Buscar destino, empresa o andén..."
+                   oninput="onBusquedaChange()"
                    class="w-full bg-slate-800 border border-slate-700 rounded-lg px-3 py-2 text-sm text-white focus:outline-none focus:border-blue-500">
             
-            <!-- Restaurar Mapa -->
+            <!-- Botón Restaurar Mapa -->
             <button id="btn-reset" onclick="seleccionarHorario(null)" 
-                    class="w-full py-1.5 px-3 bg-slate-800 hover:bg-slate-700 text-blue-400 text-xs font-semibold rounded-lg border border-slate-700 transition">
-                🌐 Ver todos los recorridos en el mapa
+                    class="w-full py-1.5 px-3 bg-slate-800 hover:bg-slate-700 text-blue-400 text-xs font-semibold rounded-lg border border-slate-700 transition flex items-center justify-center gap-1">
+                🌐 Ver todas las rutas (<span id="txt-tab-actual">Salidas</span>)
             </button>
         </div>
 
@@ -71,14 +76,15 @@
         <!-- Leyenda de Estado -->
         <div class="absolute top-4 right-4 z-[1000] bg-slate-900/90 border border-slate-800 p-3 rounded-xl backdrop-blur text-xs space-y-1 shadow-lg">
             <div class="flex items-center gap-2">
-                <span class="w-3 h-3 rounded-full bg-emerald-500 animate-pulse"></span>
-                <span id="estado-mapa">Conectando con servidor...</span>
+                <span id="indicador-pulso" class="w-3 h-3 rounded-full bg-blue-500 animate-pulse"></span>
+                <span id="estado-mapa" class="font-medium text-slate-200">Cargando mapa...</span>
             </div>
+            <div id="info-detalle-ruta" class="text-[11px] text-slate-400 font-mono hidden"></div>
         </div>
     </main>
 
     <script>
-        // 1. COORDENADAS GPS DE LOS SECTORES DEFINIDOS EN APP.PY
+        // COORDENADAS GPS DE CADA LOCALIDAD EN APP.PY
         const COORDENADAS = {
             "panguipulli": [-39.6430, -72.3312],
             "coñaripe": [-39.5532, -71.9790],
@@ -87,9 +93,10 @@
             "huerquehue": [-39.6631, -72.2415]
         };
 
-        const COLORES = ["#3b82f6", "#10b981", "#f59e0b", "#ec4899", "#8b5cf6", "#06b6d4"];
+        const PALETA_SALIDAS = ["#3b82f6", "#06b6d4", "#10b981", "#6366f1", "#8b5cf6"];
+        const PALETA_LLEGADAS = ["#f59e0b", "#ec4899", "#f97316", "#ef4444", "#eab308"];
 
-        // 2. INICIALIZAR MAPA
+        // Inicializar mapa Leaflet
         const map = L.map('map').setView(COORDENADAS["panguipulli"], 10);
         L.tileLayer('https://{s}.basemaps.cartocdn.com/dark_all/{z}/{x}/{y}{r}.png', {
             maxZoom: 19,
@@ -100,94 +107,148 @@
         let datosHorarios = [];
         let capasRutas = {};
         let itemSeleccionadoIndex = null;
+        let cacheRutasOSRM = {}; // Cache de trazado de carretera
 
-        function crearIconoBus(color) {
+        function crearIconoBus(color, esLlegada) {
+            const emoji = esLlegada ? "🚌" : "🚌";
             return L.divIcon({
-                html: `<div style="background-color: ${color};" class="text-white rounded-full p-1 shadow-lg border-2 border-white flex items-center justify-center w-7 h-7 text-xs">🚌</div>`,
+                html: `<div style="background-color: ${color};" class="text-white rounded-full p-1 shadow-xl border-2 border-slate-900 flex items-center justify-center w-8 h-8 text-xs font-bold transition-transform hover:scale-125">${emoji}</div>`,
                 className: '',
-                iconSize: [28, 28],
-                iconAnchor: [14, 14]
+                iconSize: [32, 32],
+                iconAnchor: [16, 16]
             });
         }
 
-        // 3. RUTEO POR CARRETERA REAL (OSRM API)
+        // Obtener geometría de carretera OSRM
         async function obtenerRutaOSRM(origenGPS, destinoGPS) {
+            const key = `${origenGPS.join(',')}-${destinoGPS.join(',')}`;
+            if (cacheRutasOSRM[key]) {
+                return cacheRutasOSRM[key];
+            }
+
             const url = `https://router.project-osrm.org/route/v1/driving/${origenGPS[1]},${origenGPS[0]};${destinoGPS[1]},${destinoGPS[0]}?overview=full&geometries=geojson`;
             try {
                 const res = await fetch(url);
                 const data = await res.json();
-                return data.routes[0].geometry.coordinates.map(c => [c[1], c[0]]);
+                if (data.routes && data.routes.length > 0) {
+                    const coords = data.routes[0].geometry.coordinates.map(c => [c[1], c[0]]);
+                    cacheRutasOSRM[key] = coords;
+                    return coords;
+                }
             } catch (e) {
-                return [origenGPS, destinoGPS];
+                console.warn("Error en OSRM, usando línea recta:", e);
             }
+            return [origenGPS, destinoGPS];
         }
 
-        // 4. CONSUMIR LA API DE FLASK (/api/horarios)
+        // Cargar datos de la API Flask según la pestaña seleccionada
         async function cargarDatosAPI() {
+            document.getElementById("estado-mapa").innerText = "Obteniendo horarios...";
             try {
                 const res = await fetch(`/api/horarios?tab=${currentTab}`);
                 datosHorarios = await res.json();
+                
                 renderizarLista();
                 await actualizarMapa();
             } catch (err) {
-                console.error("Error al obtener los horarios desde app.py:", err);
+                console.error("Error al cargar datos desde app.py:", err);
+                document.getElementById("estado-mapa").innerText = "Error de conexión con la API";
             }
         }
 
         function cambiarTab(tab) {
+            if (currentTab === tab) return;
             currentTab = tab;
-            document.getElementById('tab-salidas').className = tab === 'salidas' 
-                ? 'flex-1 py-1.5 rounded-md bg-blue-600 text-white transition shadow' 
-                : 'flex-1 py-1.5 rounded-md text-slate-400 hover:text-white transition';
-            document.getElementById('tab-llegadas').className = tab === 'llegadas' 
-                ? 'flex-1 py-1.5 rounded-md bg-blue-600 text-white transition shadow' 
-                : 'flex-1 py-1.5 rounded-md text-slate-400 hover:text-white transition';
-            
-            itemSeleccionadoIndex = null;
+            itemSeleccionadoIndex = null; // Reiniciar selección al cambiar de pestaña
+
+            // Actualizar apariencia de botones
+            const btnSalidas = document.getElementById('tab-salidas');
+            const btnLlegadas = document.getElementById('tab-llegadas');
+            const txtTab = document.getElementById('txt-tab-actual');
+
+            if (tab === 'salidas') {
+                btnSalidas.className = 'flex-1 py-1.5 rounded-md bg-blue-600 text-white transition shadow font-bold';
+                btnLlegadas.className = 'flex-1 py-1.5 rounded-md text-slate-400 hover:text-white transition';
+                txtTab.innerText = "Salidas";
+            } else {
+                btnLlegadas.className = 'flex-1 py-1.5 rounded-md bg-amber-600 text-white transition shadow font-bold';
+                btnSalidas.className = 'flex-1 py-1.5 rounded-md text-slate-400 hover:text-white transition';
+                txtTab.innerText = "Llegadas";
+            }
+
             cargarDatosAPI();
         }
 
-        // 5. RENDERIZAR LISTA DE SALIDAS O LLEGADAS
+        function obtenerItemsFiltrados() {
+            const q = document.getElementById("busqueda").value.toLowerCase().trim();
+            return datosHorarios.filter(item => {
+                if (!q) return true;
+                const textoSearch = `${item.empresa} ${item.origen} ${item.destino} ${item.anden} ${item.sector} ${item.dias}`.toLowerCase();
+                return textoSearch.includes(q);
+            });
+        }
+
+        function onBusquedaChange() {
+            itemSeleccionadoIndex = null;
+            renderizarLista();
+            actualizarMapa();
+        }
+
+        // Renderizar tarjetas de horario
         function renderizarLista() {
             const contenedor = document.getElementById("lista-horarios");
             contenedor.innerHTML = "";
-            const q = document.getElementById("busqueda").value.toLowerCase();
 
-            datosHorarios.forEach((item, index) => {
-                const textoSearch = `${item.empresa} ${item.origen} ${item.destino} ${item.anden} ${item.sector}`.toLowerCase();
-                if (q && !textoSearch.includes(q)) return;
+            const itemsVisibles = obtenerItemsFiltrados();
 
-                const estaSeleccionado = itemSeleccionadoIndex === index;
-                const color = COLORES[index % COLORES.length];
+            if (itemsVisibles.length === 0) {
+                contenedor.innerHTML = `
+                    <div class="text-center py-8 text-slate-500 text-xs">
+                        No se encontraron ${currentTab} con esos criterios.
+                    </div>`;
+                return;
+            }
+
+            const paleta = currentTab === 'salidas' ? PALETA_SALIDAS : PALETA_LLEGADAS;
+
+            itemsVisibles.forEach((item) => {
+                const origIndex = datosHorarios.indexOf(item);
+                const estaSeleccionado = itemSeleccionadoIndex === origIndex;
+                const color = paleta[origIndex % paleta.length];
 
                 contenedor.innerHTML += `
-                <div onclick="seleccionarHorario(${index})"
+                <div onclick="seleccionarHorario(${origIndex})"
                      class="p-4 rounded-xl border transition cursor-pointer flex justify-between items-center ${
                          estaSeleccionado 
-                         ? 'bg-slate-800 border-blue-500 shadow-lg scale-[1.01]' 
-                         : 'bg-slate-800/50 border-slate-700/60 hover:border-slate-500'
+                         ? (currentTab === 'salidas' ? 'bg-slate-800 border-blue-500 shadow-xl ring-2 ring-blue-500/30' : 'bg-slate-800 border-amber-500 shadow-xl ring-2 ring-amber-500/30') 
+                         : 'bg-slate-800/60 border-slate-700/60 hover:border-slate-500 hover:bg-slate-800'
                      }">
-                    <div>
+                    <div class="space-y-1">
                         <div class="flex items-center gap-2">
-                            <span class="w-3 h-3 rounded-full" style="background-color: ${color}"></span>
+                            <span class="w-3 h-3 rounded-full flex-shrink-0" style="background-color: ${color}"></span>
                             <h3 class="font-bold text-white text-sm">${item.empresa}</h3>
-                            <span class="text-[10px] px-2 py-0.5 rounded-full bg-slate-700 text-slate-300">Andén ${item.anden}</span>
+                            <span class="text-[10px] px-2 py-0.5 rounded-full bg-slate-700 text-slate-300 font-mono">Andén ${item.anden}</span>
                         </div>
-                        <p class="text-xs text-slate-300 mt-1">
-                            ${item.origen} ➔ <span class="font-semibold text-white">${item.destino}</span>
+                        <p class="text-xs text-slate-300">
+                            ${item.origen} ➔ <span class="font-bold text-white">${item.destino}</span>
                         </p>
-                        <p class="text-[11px] text-slate-400 mt-0.5">${item.dias}</p>
+                        <div class="flex items-center gap-2 text-[11px] text-slate-400">
+                            <span>🗓️ ${item.dias}</span>
+                            <span>•</span>
+                            <span class="text-slate-300">Sector ${item.sector}</span>
+                        </div>
                     </div>
-                    <div class="text-right">
-                        <span class="text-xl font-bold text-white font-mono">${item.salida}</span>
+                    <div class="text-right pl-2">
+                        <span class="text-xs text-slate-400 block">${currentTab === 'salidas' ? 'Salida' : 'Llegada'}</span>
+                        <span class="text-xl font-black text-white font-mono">${item.salida}</span>
                     </div>
                 </div>`;
             });
         }
 
-        // 6. DIBUJAR Y ANIMAR BUSES EN EL MAPA
+        // Dibujar en el mapa exclusivamente las rutas filtradas o la seleccionada
         async function actualizarMapa() {
-            // Limpiar mapa
+            // 1. Limpiar completamente el mapa e intervalos anteriores
             Object.keys(capasRutas).forEach(k => {
                 if (capasRutas[k].intervalo) clearInterval(capasRutas[k].intervalo);
                 map.removeLayer(capasRutas[k].polyline);
@@ -195,12 +256,33 @@
             });
             capasRutas = {};
 
-            document.getElementById("estado-mapa").innerText = `Cargando rutas de la API...`;
+            // 2. Determinar qué elementos dibujar
+            let itemsAMostrar = [];
+            if (itemSeleccionadoIndex !== null && datosHorarios[itemSeleccionadoIndex]) {
+                itemsAMostrar = [{ item: datosHorarios[itemSeleccionadoIndex], index: itemSeleccionadoIndex }];
+            } else {
+                const filtrados = obtenerItemsFiltrados();
+                itemsAMostrar = filtrados.map(item => ({ item, index: datosHorarios.indexOf(item) }));
+            }
 
-            for (let i = 0; i < datosHorarios.length; i++) {
-                const h = datosHorarios[i];
-                const origenKey = h.origen.toLowerCase();
-                const destinoKey = h.destino.toLowerCase();
+            if (itemsAMostrar.length === 0) {
+                document.getElementById("estado-mapa").innerText = "Sin rutas activas";
+                document.getElementById("info-detalle-ruta").classList.add("hidden");
+                return;
+            }
+
+            document.getElementById("estado-mapa").innerText = `Cargando ${itemsAMostrar.length} ruta(s) de ${currentTab}...`;
+
+            const paleta = currentTab === 'salidas' ? PALETA_SALIDAS : PALETA_LLEGADAS;
+            const esLlegada = currentTab === 'llegadas';
+            let todasLasCoordenadas = [];
+
+            for (const entry of itemsAMostrar) {
+                const h = entry.item;
+                const idx = entry.index;
+
+                const origenKey = (h.origen || "").toLowerCase();
+                const destinoKey = (h.destino || "").toLowerCase();
 
                 const origenGPS = COORDENADAS[origenKey] || COORDENADAS["panguipulli"];
                 const destinoGPS = COORDENADAS[destinoKey] || COORDENADAS["panguipulli"];
@@ -208,23 +290,60 @@
                 if (origenGPS[0] === destinoGPS[0] && origenGPS[1] === destinoGPS[1]) continue;
 
                 const coords = await obtenerRutaOSRM(origenGPS, destinoGPS);
-                const color = COLORES[i % COLORES.length];
+                todasLasCoordenadas.push(...coords);
 
-                const polyline = L.polyline(coords, { color, weight: 4, opacity: 0.8 }).addTo(map);
-                const marker = L.marker(coords[0], { icon: crearIconoBus(color) }).addTo(map);
+                const color = paleta[idx % paleta.length];
 
-                polyline.on('click', () => seleccionarHorario(i));
+                // Polyline trazado
+                const polyline = L.polyline(coords, { 
+                    color: color, 
+                    weight: itemSeleccionadoIndex === idx ? 6 : 4, 
+                    opacity: itemSeleccionadoIndex === idx ? 1.0 : 0.8,
+                    dashArray: esLlegada ? '8, 8' : null // Trazado discontinuo para llegadas
+                }).addTo(map);
 
-                capasRutas[i] = { polyline, marker, coords, pasoActual: 0, intervalo: null };
-                iniciarAnimacionBus(i);
+                // Marcador animación
+                const marker = L.marker(coords[0], { icon: crearIconoBus(color, esLlegada) }).addTo(map);
+
+                // Tooltip
+                polyline.bindTooltip(`<b>${h.empresa}</b><br>${h.origen} ➔ ${h.destino}<br>Hora: ${h.salida} | Andén ${h.anden}`, { sticky: true });
+                
+                polyline.on('click', () => seleccionarHorario(idx));
+                marker.on('click', () => seleccionarHorario(idx));
+
+                capasRutas[idx] = { polyline, marker, coords, pasoActual: 0, intervalo: null };
+                iniciarAnimacionBus(idx);
             }
 
-            document.getElementById("estado-mapa").innerText = `Mostrando ${Object.keys(capasRutas).length} recorridos activos`;
+            // Ajustar encuadre del mapa
+            if (todasLasCoordenadas.length > 0) {
+                const bounds = L.latLngBounds(todasLasCoordenadas);
+                map.fitBounds(bounds, { padding: [50, 50], maxZoom: 12 });
+            }
+
+            // Actualizar leyenda
+            const numRutas = Object.keys(capasRutas).length;
+            const pulso = document.getElementById("indicador-pulso");
+            const infoDetalle = document.getElementById("info-detalle-ruta");
+
+            pulso.className = `w-3 h-3 rounded-full animate-pulse ${esLlegada ? 'bg-amber-500' : 'bg-blue-500'}`;
+
+            if (itemSeleccionadoIndex !== null) {
+                const sel = datosHorarios[itemSeleccionadoIndex];
+                document.getElementById("estado-mapa").innerText = `Seleccionado: ${sel.empresa}`;
+                infoDetalle.innerHTML = `${sel.origen} ➔ ${sel.destino} | ${sel.salida} hrs (Andén ${sel.anden})`;
+                infoDetalle.classList.remove("hidden");
+            } else {
+                document.getElementById("estado-mapa").innerText = `${numRutas} recorrido(s) de ${currentTab.toUpperCase()} en mapa`;
+                infoDetalle.classList.add("hidden");
+            }
         }
 
+        // Animación del autobús por la carretera
         function iniciarAnimacionBus(index) {
             const capa = capasRutas[index];
-            if (!capa) return;
+            if (!capa || !capa.coords || capa.coords.length === 0) return;
+
             capa.intervalo = setInterval(() => {
                 if (capa.pasoActual < capa.coords.length) {
                     capa.marker.setLatLng(capa.coords[capa.pasoActual]);
@@ -232,48 +351,26 @@
                 } else {
                     capa.pasoActual = 0;
                 }
-            }, 300);
+            }, 250);
         }
 
-        // 7. SELECCIONAR O DESSELECCIONAR RUTAS
+        // Seleccionar una ruta individual o deseleccionar
         function seleccionarHorario(index) {
-            itemSeleccionadoIndex = index;
-            renderizarLista();
-
-            if (index === null) {
-                document.getElementById("estado-mapa").innerText = "Mostrando todos los recorridos";
-                Object.keys(capasRutas).forEach(k => {
-                    map.addLayer(capasRutas[k].polyline);
-                    map.addLayer(capasRutas[k].marker);
-                });
-                map.setView(COORDENADAS["panguipulli"], 10);
+            if (itemSeleccionadoIndex === index) {
+                itemSeleccionadoIndex = null;
             } else {
-                const item = datosHorarios[index];
-                document.getElementById("estado-mapa").innerText = `Ruta: ${item.origen} ➔ ${item.destino}`;
-
-                Object.keys(capasRutas).forEach(k => {
-                    const numK = parseInt(k);
-                    if (numK === index) {
-                        map.addLayer(capasRutas[numK].polyline);
-                        map.addLayer(capasRutas[numK].marker);
-                        map.fitBounds(capasRutas[numK].polyline.getBounds(), { padding: [40, 40] });
-                    } else {
-                        map.removeLayer(capasRutas[numK].polyline);
-                        map.removeLayer(capasRutas[numK].marker);
-                    }
-                });
+                itemSeleccionadoIndex = index;
             }
+            renderizarLista();
+            actualizarMapa();
         }
 
-        // Búsqueda en vivo
-        document.getElementById("busqueda").addEventListener("input", renderizarLista);
-
-        // Registro de Service Worker (sw.js)
+        // PWA Service Worker
         if ("serviceWorker" in navigator) {
-            navigator.serviceWorker.register("sw.js");
+            navigator.serviceWorker.register("sw.js").catch(console.error);
         }
 
-        // Iniciar carga de datos
+        // Carga inicial
         cargarDatosAPI();
     </script>
 </body>
