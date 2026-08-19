@@ -1,13 +1,72 @@
-# app.py
+import os
+import psycopg2
+from psycopg2.extras import RealDictCursor
 from flask import Flask, jsonify, request, send_from_directory
 from datetime import datetime
+from dotenv import load_dotenv
+
+# Carga variables locales si existe archivo .env
+load_dotenv()
 
 app = Flask(__name__, static_folder='.', static_url_path='')
+
+# Obtener URL de Supabase desde las variables de entorno
+DATABASE_URL = os.getenv('DATABASE_URL')
+
+def obtener_conexion():
+    """Conexión segura a la base de datos de Supabase."""
+    return psycopg2.connect(DATABASE_URL, cursor_factory=RealDictCursor)
 
 @app.route('/')
 def root():
     return send_from_directory(app.static_folder, 'index.html')
 
+# ==========================================
+# ENDPOINTS DE BASE DE DATOS (USUARIOS)
+# ==========================================
+
+@app.route('/api/usuarios', methods=['GET'])
+def obtener_usuarios():
+    try:
+        conn = obtener_conexion()
+        cur = conn.cursor()
+        cur.execute("SELECT id, nombre, email, rol, empresa_id FROM usuarios;")
+        usuarios = cur.fetchall()
+        cur.close()
+        conn.close()
+        return jsonify(usuarios)
+    except Exception as e:
+        return jsonify({"error": str(e)}), 500
+
+@app.route('/api/registro', methods=['POST'])
+def registrar_usuario():
+    data = request.json or {}
+    nombre = data.get('nombre')
+    email = data.get('email')
+    password = data.get('password')
+    rol = data.get('rol', 'pasajero')
+
+    if not nombre or not email or not password:
+        return jsonify({"error": "Faltan campos requeridos"}), 400
+
+    try:
+        conn = obtener_conexion()
+        cur = conn.cursor()
+        cur.execute(
+            "INSERT INTO usuarios (nombre, email, password_hash, rol) VALUES (%s, %s, %s, %s) RETURNING id, nombre, email, rol;",
+            (nombre, email, password, rol)
+        )
+        nuevo_usuario = cur.fetchone()
+        conn.commit()
+        cur.close()
+        conn.close()
+        return jsonify(nuevo_usuario), 201
+    except Exception as e:
+        return jsonify({"error": "Error al registrar usuario o email duplicado"}), 400
+
+# ==========================================
+# RECORRIDOS TERMINAL PANGUIPULLI
+# ==========================================
 BASE = [
     # ---------------- SALIDAS DESDE PANGUIPULLI ----------------
     {"tipo": "salida", "sector": "Coñaripe",  "origen": "Panguipulli", "destino": "Coñaripe",  "empresa": "Buses Liquiñe",   "salida": "06:30", "llegada": "07:40", "anden": "1", "dias": "Diario"},
@@ -138,16 +197,17 @@ def llegadas():
 
 @app.route('/healthz')
 def healthz():
-    return jsonify({"ok": True})
+    return jsonify({"ok": True, "database": "Conectada" if DATABASE_URL else "Sin configurar"})
 
 @app.after_request
 def cors(resp):
     resp.headers['Access-Control-Allow-Origin'] = '*'
-    resp.headers['Access-Control-Allow-Methods'] = 'GET, OPTIONS'
+    resp.headers['Access-Control-Allow-Methods'] = 'GET, POST, OPTIONS'
     resp.headers['Access-Control-Allow-Headers'] = 'Content-Type'
     if request.path.startswith('/api/'):
         resp.headers['Cache-Control'] = 'no-store'
     return resp
 
 if __name__ == '__main__':
-    app.run(host='0.0.0.0', port=5000, debug=True)
+    port = int(os.environ.get('PORT', 5000))
+    app.run(host='0.0.0.0', port=port, debug=True)
