@@ -41,7 +41,7 @@
     </div>
 
     <script>
-        // Aquí puedes recuperar los datos del usuario logueado (por ejemplo, mediante localStorage o una petición a tu API)
+        // Recuperar los datos del usuario logueado en index.html
         const usuarioSesion = JSON.parse(localStorage.getItem('usuarioSesion')) || {
             nombre: "Invitado",
             email: "invitado@terminal.cl",
@@ -65,6 +65,7 @@
         }
 
         function cerrarSesion() {
+            // Elimina los datos de sesión y vuelve al inicio
             localStorage.removeItem('usuarioSesion');
             window.location.href = '/';
         }
