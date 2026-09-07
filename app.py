@@ -1,37 +1,39 @@
-from flask import Flask, render_template, jsonify, request
+from flask import Flask, render_template, jsonify, request, send_from_directory
 import os
 import psycopg2
 from psycopg2.extras import RealDictCursor
 
-app = Flask(__name__)
+# Configuración para leer HTML, imágenes y PWA (sw.js, manifest.json) desde la raíz
+app = Flask(__name__, template_folder='.', static_folder='.', static_url_path='')
 
 # ==========================================
 # CONEXIÓN A LA BASE DE DATOS (SUPABASE)
 # ==========================================
 def get_db_connection():
-    """
-    Establece y retorna una conexión activa con la base de datos PostgreSQL.
-    Obtiene las credenciales desde la variable de entorno DATABASE_URL.
-    """
     url = os.environ.get('DATABASE_URL')
     if not url:
         raise Exception("Error: La variable de entorno DATABASE_URL no está configurada.")
     return psycopg2.connect(url, cursor_factory=RealDictCursor)
-
 
 # ==========================================
 # RUTAS DE PÁGINAS (VISTAS HTML)
 # ==========================================
 @app.route('/')
 def index():
-    """Ruta principal: Muestra el mapa e interfaz pública para pasajeros."""
     return render_template('index.html')
 
 @app.route('/usuario')
 def usuario():
-    """Ruta de perfil/dashboard: Muestra el panel según el rol del usuario."""
     return render_template('usuario.html')
 
+# Servir manifest.json y sw.js para soporte PWA
+@app.route('/manifest.json')
+def manifest():
+    return send_from_directory('.', 'manifest.json')
+
+@app.route('/sw.js')
+def service_worker():
+    return send_from_directory('.', 'sw.js')
 
 # ==========================================
 # API ENDPOINTS (DATOS Y AUTENTICACIÓN)
@@ -39,14 +41,9 @@ def usuario():
 
 @app.route('/api/horarios', methods=['GET'])
 def get_horarios():
-    """
-    Obtiene la lista de horarios filtrados por tipo (salida/llegada)
-    y opcionalmente por término de búsqueda (origen, destino, empresa).
-    """
     tab = request.args.get('tab', 'salidas')
     query_search = request.args.get('q', '').strip()
     
-    # Mapeo del tab visual al campo 'tipo' en la base de datos
     tipo_filtro = 'salida' if tab == 'salidas' else 'llegada'
 
     try:
@@ -76,15 +73,10 @@ def get_horarios():
 
     except Exception as e:
         print("❌ Error en consulta /api/horarios:", e)
-        # Retorna lista vacía en lugar de romper la aplicación
         return jsonify([]), 500
-
 
 @app.route('/api/registro', methods=['POST'])
 def registro_usuario():
-    """
-    Registra un nuevo usuario en la tabla 'usuarios' de Supabase.
-    """
     try:
         datos = request.get_json()
         nombre = datos.get('nombre')
@@ -98,7 +90,6 @@ def registro_usuario():
         conn = get_db_connection()
         cur = conn.cursor()
 
-        # Insertar nuevo registro en la tabla usuarios
         sql = """
             INSERT INTO usuarios (nombre, email, password, rol) 
             VALUES (%s, %s, %s, %s) 
@@ -122,12 +113,8 @@ def registro_usuario():
         print("❌ Error en registro:", e)
         return jsonify({'error': 'Error interno del servidor'}), 500
 
-
 @app.route('/api/login', methods=['POST'])
 def login_usuario():
-    """
-    Verifica las credenciales del usuario en la base de datos.
-    """
     try:
         datos = request.get_json()
         email = datos.get('email')
@@ -152,11 +139,9 @@ def login_usuario():
         print("❌ Error en login:", e)
         return jsonify({'error': 'Error interno del servidor'}), 500
 
-
 # ==========================================
 # INICIALIZACIÓN DEL SERVIDOR
 # ==========================================
 if __name__ == '__main__':
-    # Obtiene el puerto asignado por Render (o 5000 por defecto en local)
     port = int(os.environ.get('PORT', 5000))
     app.run(host='0.0.0.0', port=port, debug=True)
