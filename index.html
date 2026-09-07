@@ -148,14 +148,21 @@
             "villarrica":  [-39.2822, -72.2272],
             "liquiñe":     [-39.7360, -71.8540],
             "puerto fuy":  [-39.8660, -71.8885],
-            "valdivia":    [-39.8142, -73.2459]
+            "valdivia":    [-39.8142, -73.2459],
+            "temuco":      [-38.7399, -72.5901]
         };
 
         const PALETA_SALIDAS = ["#3b82f6", "#06b6d4", "#10b981", "#6366f1", "#8b5cf6"];
         const PALETA_LLEGADAS = ["#f59e0b", "#ec4899", "#f97316", "#ef4444", "#eab308"];
 
         const map = L.map('map').setView(COORDENADAS["panguipulli"], 10);
-        L.tileLayer('https://{s}.basemaps.cartocdn.com/dark_all/{z}/{x}/{y}{r}.png', { maxZoom: 19 }).addTo(map);
+        
+        // --- AQUÍ ESTÁ EL MAPA NUEVO SIN MARCA DE AGUA (ESRI DARK GRAY) ---
+        L.tileLayer('https://server.arcgisonline.com/ArcGIS/rest/services/Canvas/World_Dark_Gray_Base/MapServer/tile/{z}/{y}/{x}', { 
+            maxZoom: 16,
+            attribution: 'Tiles © Esri'
+        }).addTo(map);
+        // ------------------------------------------------------------------
 
         let currentTab = 'salidas';
         let datosHorarios = [];
@@ -163,8 +170,6 @@
         let itemSeleccionadoIndex = null;
         let mostrantoMapaMovil = false;
 
-        // --- MANEJO DE SESIÓN CORREGIDO ---
-        // Leer la sesión actual desde localStorage
         let usuarioSesion = JSON.parse(localStorage.getItem('usuarioSesion'));
 
         function actualizarInterfazSesion() {
@@ -178,12 +183,10 @@
             } else {
                 info.innerText = `👤 Hola, ${usuarioSesion.nombre}`;
                 btn.innerText = "👤 Mi Perfil";
-                // En lugar de abrir el modal, ir directo a la página de usuario
                 btn.onclick = () => { window.location.href = '/usuario'; };
             }
         }
         
-        // Ejecutar al cargar la página
         actualizarInterfazSesion();
 
         function abrirModalAuth() { document.getElementById('modal-auth').classList.remove('hidden'); }
@@ -207,10 +210,7 @@
                 usuarioSesion = { rol: "pasajero", nombre: "Pasajero", email };
             }
 
-            // 1. Guardar la sesión para que la otra pantalla la lea
             localStorage.setItem('usuarioSesion', JSON.stringify(usuarioSesion));
-            
-            // 2. Redirigir
             window.location.href = '/usuario'; 
         }
 
@@ -233,11 +233,7 @@
                 if (res.ok) {
                     alert('¡Cuenta creada exitosamente!');
                     usuarioSesion = { rol: payload.rol, nombre: payload.nombre, email: payload.email };
-                    
-                    // 1. Guardar sesión
                     localStorage.setItem('usuarioSesion', JSON.stringify(usuarioSesion));
-                    
-                    // 2. Redirigir a pantalla de usuario
                     window.location.href = '/usuario';
                 } else {
                     alert('Error al crear usuario (quizás el correo ya existe).');
@@ -246,7 +242,6 @@
                 alert('Ocurrió un error de conexión.');
             }
         }
-        // --- FIN DE MANEJO DE SESIÓN ---
 
         function toggleVistaMovil() {
             mostrantoMapaMovil = !mostrantoMapaMovil;
@@ -266,10 +261,16 @@
             }
         }
 
+        function onBusquedaChange() {
+            cargarDatosAPI();
+        }
+
         async function cargarDatosAPI() {
             document.getElementById("estado-mapa").innerText = "Obteniendo horarios...";
+            const query = document.getElementById('busqueda').value;
+            
             try {
-                const res = await fetch(`/api/horarios?tab=${currentTab}`);
+                const res = await fetch(`/api/horarios?tab=${currentTab}&q=${encodeURIComponent(query)}`);
                 datosHorarios = await res.json();
                 renderizarLista();
                 actualizarMapa();
@@ -292,6 +293,11 @@
             const contenedor = document.getElementById("lista-horarios");
             contenedor.innerHTML = "";
             const paleta = currentTab === 'salidas' ? PALETA_SALIDAS : PALETA_LLEGADAS;
+
+            if (datosHorarios.length === 0) {
+                contenedor.innerHTML = `<div class="text-center text-slate-500 py-10 text-sm">No se encontraron recorridos.</div>`;
+                return;
+            }
 
             datosHorarios.forEach((item, index) => {
                 const color = paleta[index % paleta.length];
@@ -339,7 +345,10 @@
 
             if (coordsTotales.length > 0) {
                 map.fitBounds(L.latLngBounds(coordsTotales), { padding: [40, 40] });
+            } else {
+                map.setView(COORDENADAS["panguipulli"], 10);
             }
+            
             document.getElementById("estado-mapa").innerText = `${datosHorarios.length} rutas cargadas`;
         }
 
