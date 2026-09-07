@@ -3,72 +3,379 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Mi Perfil - Terminal Panguipulli</title>
+    <title>Panel de Control - BSRed Terminal Panguipulli</title>
+    <!-- Tailwind CSS -->
     <script src="https://cdn.tailwindcss.com"></script>
+    <style>
+        .custom-scrollbar::-webkit-scrollbar { width: 6px; }
+        .custom-scrollbar::-webkit-scrollbar-thumb { background: #334155; border-radius: 4px; }
+    </style>
 </head>
-<body class="bg-slate-950 text-slate-100 min-h-screen flex flex-col items-center justify-center p-4">
+<body class="bg-slate-950 text-slate-100 font-sans min-h-screen flex flex-col md:flex-row antialiased">
 
-    <div class="w-full max-w-md bg-slate-900 border border-slate-800 rounded-2xl p-6 shadow-2xl space-y-6">
-        <div class="flex items-center justify-between border-b border-slate-800 pb-4">
-            <h1 class="text-lg font-bold text-white flex items-center gap-2">👤 Mi Perfil</h1>
-            <a href="/" class="text-xs text-blue-400 hover:underline">⬅️ Volver al Inicio</a>
+    <!-- BARRA LATERAL (SIDEBAR UNIFICADO estilo MOCKUP) -->
+    <aside class="w-full md:w-64 bg-slate-900 border-r border-slate-800 flex flex-col justify-between z-20 shrink-0">
+        <div>
+            <!-- Perfil del usuario -->
+            <div class="p-6 text-center border-b border-slate-800">
+                <div class="w-20 h-20 mx-auto mb-3 rounded-full bg-slate-800 border-2 border-blue-500 flex items-center justify-center text-3xl shadow-lg shadow-blue-500/10" id="avatar-container">
+                    👤
+                </div>
+                <h2 id="user-display-name" class="font-bold text-white text-base truncate">Cargando...</h2>
+                <span id="user-role-badge" class="inline-block mt-1 px-3 py-0.5 text-xs font-semibold rounded-full bg-blue-500/20 text-blue-400 border border-blue-500/30">
+                    Invitado
+                </span>
+            </div>
+
+            <!-- Navegación -->
+            <nav class="p-4 space-y-1.5 text-sm">
+                <button onclick="cambiarSeccion('dashboard')" id="nav-dashboard" class="w-full flex items-center gap-3 px-4 py-3 rounded-xl bg-blue-600 text-white font-semibold transition shadow-lg shadow-blue-600/20">
+                    <span>📊</span> <span>Dashboard</span>
+                </button>
+                <button onclick="cambiarSeccion('actividad')" id="nav-actividad" class="w-full flex items-center gap-3 px-4 py-3 rounded-xl text-slate-400 hover:bg-slate-800 hover:text-white transition">
+                    <span>🚌</span> <span id="txt-nav-secundario">Gestión</span>
+                </button>
+                <button onclick="cambiarSeccion('notificaciones')" id="nav-notificaciones" class="w-full flex items-center gap-3 px-4 py-3 rounded-xl text-slate-400 hover:bg-slate-800 hover:text-white transition">
+                    <span>🔔</span> <span>Notificaciones</span>
+                </button>
+                <button onclick="window.location.href='/'" class="w-full flex items-center gap-3 px-4 py-3 rounded-xl text-slate-400 hover:bg-slate-800 hover:text-white transition">
+                    <span>🗺️</span> <span>Ver Mapa General</span>
+                </button>
+            </nav>
         </div>
 
-        <div class="flex items-center gap-4 bg-slate-800/50 p-4 rounded-xl border border-slate-700/50">
-            <div id="perfil-avatar" class="w-12 h-12 rounded-full bg-blue-600/30 border border-blue-500 flex items-center justify-center text-xl font-bold text-blue-400">
-                U
-            </div>
+        <!-- Botón Salir -->
+        <div class="p-4 border-t border-slate-800">
+            <button onclick="cerrarSesion()" class="w-full flex items-center justify-center gap-2 px-4 py-2.5 bg-red-500/10 hover:bg-red-500/20 text-red-400 border border-red-500/30 text-xs font-bold rounded-xl transition">
+                <span>🚪</span> Cerrar Sesión
+            </button>
+        </div>
+    </aside>
+
+    <!-- ÁREA PRINCIPAL DE CONTENIDO -->
+    <main class="flex-1 p-4 md:p-8 overflow-y-auto custom-scrollbar">
+
+        <!-- Header Superior con Fecha -->
+        <header class="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4 mb-6">
             <div>
-                <h2 id="perfil-nombre" class="text-base font-bold text-white">Cargando...</h2>
-                <p id="perfil-email" class="text-xs text-slate-400">correo@ejemplo.com</p>
+                <h1 class="text-2xl font-black text-white tracking-tight">Sistema BSRed Terminal</h1>
+                <p class="text-xs text-slate-400">Panguipulli, Región de Los Ríos</p>
             </div>
-        </div>
-
-        <div class="space-y-3 text-xs">
-            <div class="flex justify-between py-2 border-b border-slate-800">
-                <span class="text-slate-400">Estatus de Cuenta:</span>
-                <span id="perfil-rol-badge" class="px-2.5 py-1 rounded font-bold bg-slate-700 text-slate-300">Cargando...</span>
+            <div class="bg-slate-900 border border-slate-800 px-4 py-2 rounded-xl text-xs text-slate-300 font-mono">
+                📅 <span id="fecha-actual"></span>
             </div>
-            <div class="flex justify-between py-2 border-b border-slate-800">
-                <span class="text-slate-400">Sistema Conectado:</span>
-                <span class="text-emerald-400 font-semibold">Supabase (Activo)</span>
+        </header>
+
+        <!-- ================================================================= -->
+        <!-- 1. PANEL ADMINISTRADOR GENERAL                                    -->
+        <!-- ================================================================= -->
+        <section id="panel-admin" class="hidden space-y-6">
+            <!-- TARJETAS METRICAS ESTILO MOCKUP -->
+            <div class="grid grid-cols-1 sm:grid-cols-3 gap-4">
+                <div class="bg-blue-600 rounded-2xl p-5 text-white shadow-lg shadow-blue-600/20">
+                    <p class="text-xs uppercase tracking-wider font-semibold opacity-80">Consultas Diarias</p>
+                    <h3 class="text-3xl font-black mt-1">1,420</h3>
+                    <p class="text-xs mt-2 bg-white/20 inline-block px-2 py-0.5 rounded-md">📈 +14% hoy</p>
+                </div>
+                <div class="bg-rose-600 rounded-2xl p-5 text-white shadow-lg shadow-rose-600/20">
+                    <p class="text-xs uppercase tracking-wider font-semibold opacity-80">Buses Activos en Ruta</p>
+                    <h3 class="text-3xl font-black mt-1">12 Flotas</h3>
+                    <p class="text-xs mt-2 bg-white/20 inline-block px-2 py-0.5 rounded-md">🚌 Monitoreo GPS</p>
+                </div>
+                <div class="bg-sky-500 rounded-2xl p-5 text-white shadow-lg shadow-sky-500/20">
+                    <p class="text-xs uppercase tracking-wider font-semibold opacity-80">Puntualidad Global</p>
+                    <h3 class="text-3xl font-black mt-1">98.5%</h3>
+                    <p class="text-xs mt-2 bg-white/20 inline-block px-2 py-0.5 rounded-md">⏱️ Salidas a la hora</p>
+                </div>
             </div>
-        </div>
 
-        <button onclick="cerrarSesion()" class="w-full bg-rose-600 hover:bg-rose-500 text-white font-semibold py-2 rounded-lg text-xs transition">
-            🚪 Cerrar Sesión
-        </button>
-    </div>
+            <!-- CONTENIDO CENTRAL Y DERECHO -->
+            <div class="grid grid-cols-1 lg:grid-cols-3 gap-6">
+                <!-- Gráfico e indicadores -->
+                <div class="lg:col-span-2 bg-slate-900 border border-slate-800 rounded-2xl p-6 space-y-4">
+                    <h3 class="font-bold text-lg text-white flex items-center justify-between">
+                        <span>Afluencia de Pasajeros en Terminal</span>
+                        <span class="text-xs text-blue-400 bg-blue-500/10 px-2.5 py-1 rounded-lg border border-blue-500/20">Tiempo Real</span>
+                    </h3>
+                    <div class="h-48 bg-slate-950/80 rounded-xl border border-slate-800/80 flex items-end justify-between p-4 gap-2">
+                        <div class="bg-blue-500/30 hover:bg-blue-500 w-full h-[40%] rounded-t-lg transition relative group"><span class="absolute -top-6 left-1/2 -translate-x-1/2 text-[10px] hidden group-hover:block bg-slate-800 px-1 rounded">08:00</span></div>
+                        <div class="bg-blue-500/30 hover:bg-blue-500 w-full h-[75%] rounded-t-lg transition relative group"><span class="absolute -top-6 left-1/2 -translate-x-1/2 text-[10px] hidden group-hover:block bg-slate-800 px-1 rounded">10:00</span></div>
+                        <div class="bg-blue-500 w-full h-[95%] rounded-t-lg transition relative group"><span class="absolute -top-6 left-1/2 -translate-x-1/2 text-[10px] hidden group-hover:block bg-slate-800 px-1 rounded">12:00</span></div>
+                        <div class="bg-blue-500/30 hover:bg-blue-500 w-full h-[60%] rounded-t-lg transition relative group"><span class="absolute -top-6 left-1/2 -translate-x-1/2 text-[10px] hidden group-hover:block bg-slate-800 px-1 rounded">14:00</span></div>
+                        <div class="bg-blue-500/30 hover:bg-blue-500 w-full h-[85%] rounded-t-lg transition relative group"><span class="absolute -top-6 left-1/2 -translate-x-1/2 text-[10px] hidden group-hover:block bg-slate-800 px-1 rounded">18:00</span></div>
+                    </div>
+                    <div class="flex justify-between text-xs text-slate-400 font-mono pt-2">
+                        <span>Mañana (08:00)</span>
+                        <span>Mediodía (12:00 Pico)</span>
+                        <span>Tarde/Noche (20:00)</span>
+                    </div>
+                </div>
 
+                <!-- Resumen Operativo -->
+                <div class="bg-slate-900 border border-slate-800 rounded-2xl p-6 flex flex-col justify-between">
+                    <div>
+                        <h3 class="font-bold text-lg text-white mb-4">Capacidad Terminal</h3>
+                        <div class="flex items-center justify-center my-6 relative">
+                            <div class="w-32 h-32 rounded-full border-8 border-slate-800 border-t-blue-500 border-r-blue-500 flex items-center justify-center">
+                                <span class="text-2xl font-black text-white">80%</span>
+                            </div>
+                        </div>
+                        <p class="text-xs text-slate-400 text-center">Andenes ocupados actualmente</p>
+                    </div>
+                    <div class="mt-4 pt-4 border-t border-slate-800 space-y-2">
+                        <div class="flex justify-between text-xs"><span class="text-slate-400">Empresas registradas:</span> <span class="font-bold text-white">8</span></div>
+                        <div class="flex justify-between text-xs"><span class="text-slate-400">Choferes con GPS activo:</span> <span class="font-bold text-emerald-400">6</span></div>
+                    </div>
+                </div>
+            </div>
+        </section>
+
+        <!-- ================================================================= -->
+        <!-- 2. PANEL EMPRESA DE TRANSPORTES                                   -->
+        <!-- ================================================================= -->
+        <section id="panel-empresa" class="hidden space-y-6">
+            <div class="grid grid-cols-1 sm:grid-cols-3 gap-4">
+                <div class="bg-blue-600 rounded-2xl p-5 text-white">
+                    <p class="text-xs uppercase font-semibold opacity-80">Flota Asignada</p>
+                    <h3 class="text-3xl font-black mt-1">6 Buses</h3>
+                    <p class="text-xs mt-2 bg-white/20 inline-block px-2 py-0.5 rounded">En Servicio</p>
+                </div>
+                <div class="bg-amber-600 rounded-2xl p-5 text-white">
+                    <p class="text-xs uppercase font-semibold opacity-80">Salidas Programadas Hoy</p>
+                    <h3 class="text-3xl font-black mt-1">18 Horarios</h3>
+                    <p class="text-xs mt-2 bg-white/20 inline-block px-2 py-0.5 rounded">✅ Al Día</p>
+                </div>
+                <div class="bg-emerald-600 rounded-2xl p-5 text-white">
+                    <p class="text-xs uppercase font-semibold opacity-80">Choferes en Turno</p>
+                    <h3 class="text-3xl font-black mt-1">8 Activos</h3>
+                    <p class="text-xs mt-2 bg-white/20 inline-block px-2 py-0.5 rounded">👨‍✈️ Monitoreados</p>
+                </div>
+            </div>
+
+            <div class="bg-slate-900 border border-slate-800 rounded-2xl p-6">
+                <div class="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4 mb-6">
+                    <h3 class="font-bold text-lg text-white">Gestión de Horarios y Recorridos</h3>
+                    <button onclick="abrirModalNuevoHorario()" class="px-4 py-2 bg-blue-600 hover:bg-blue-500 text-white text-xs font-bold rounded-xl transition flex items-center gap-1.5 shadow-lg shadow-blue-600/20">
+                        ➕ Agregar Nuevo Horario
+                    </button>
+                </div>
+
+                <div class="overflow-x-auto">
+                    <table class="w-full text-left text-xs">
+                        <thead class="bg-slate-800 text-slate-300 uppercase font-semibold">
+                            <tr>
+                                <th class="p-3">Tipo</th>
+                                <th class="p-3">Origen / Destino</th>
+                                <th class="p-3">Hora Salida</th>
+                                <th class="p-3">Andén</th>
+                                <th class="p-3">Días</th>
+                                <th class="p-3 text-right">Acciones</th>
+                            </tr>
+                        </thead>
+                        <tbody id="tabla-empresa-horarios" class="divide-y divide-slate-800 text-slate-300">
+                            <!-- Inyectado vía JS -->
+                        </tbody>
+                    </table>
+                </div>
+            </div>
+        </section>
+
+        <!-- ================================================================= -->
+        <!-- 3. PANEL CHOFER / CONDUCTOR                                       -->
+        <!-- ================================================================= -->
+        <section id="panel-chofer" class="hidden space-y-6 max-w-2xl mx-auto">
+            <div class="bg-slate-900 border border-slate-800 rounded-2xl p-6 text-center space-y-4">
+                <span class="text-4xl">👨‍✈️</span>
+                <div>
+                    <h3 class="text-xl font-bold text-white">Consola de Conductor</h3>
+                    <p class="text-xs text-slate-400 mt-1">Transmisión de Ubicación GPS a Pasajeros</p>
+                </div>
+
+                <div class="bg-slate-950 p-4 rounded-xl border border-slate-800 text-left space-y-2">
+                    <div class="flex justify-between text-xs">
+                        <span class="text-slate-400">Recorrido Asignado:</span>
+                        <span class="font-bold text-blue-400">Panguipulli ➔ Coñaripe</span>
+                    </div>
+                    <div class="flex justify-between text-xs">
+                        <span class="text-slate-400">Horario de Salida:</span>
+                        <span class="font-mono text-white">14:30 hrs (Andén 1)</span>
+                    </div>
+                </div>
+
+                <div class="pt-2">
+                    <button id="btn-gps-chofer" onclick="toggleGPSChofer()" class="w-full py-4 bg-emerald-600 hover:bg-emerald-500 text-white font-bold text-sm rounded-2xl transition shadow-lg shadow-emerald-600/30 flex items-center justify-center gap-2">
+                        <span class="w-3 h-3 rounded-full bg-white animate-ping"></span>
+                        <span>INICIAR TRANSMISIÓN GPS EN TIEMPO REAL</span>
+                    </button>
+                </div>
+
+                <div class="grid grid-cols-2 gap-3 pt-2">
+                    <button onclick="alert('Retraso notificado a los pasajeros.')" class="py-3 px-2 bg-amber-500/10 hover:bg-amber-500/20 text-amber-400 border border-amber-500/30 text-xs font-semibold rounded-xl">
+                        ⚠️ Reportar Retraso (5 min)
+                    </button>
+                    <button onclick="alert('Alerta enviada a la empresa de transportes.')" class="py-3 px-2 bg-rose-500/10 hover:bg-rose-500/20 text-rose-400 border border-rose-500/30 text-xs font-semibold rounded-xl">
+                        🚨 Notificar Pana / Falla
+                    </button>
+                </div>
+            </div>
+        </section>
+
+        <!-- ================================================================= -->
+        <!-- 4. PANEL PASAJERO (USUARIO NORMAL)                                -->
+        <!-- ================================================================= -->
+        <section id="panel-pasajero" class="hidden space-y-6">
+            <div class="grid grid-cols-1 sm:grid-cols-3 gap-4">
+                <div class="bg-blue-600 rounded-2xl p-5 text-white">
+                    <p class="text-xs uppercase font-semibold opacity-80">Rutas Favoritas</p>
+                    <h3 class="text-3xl font-black mt-1">3 Guardadas</h3>
+                    <p class="text-xs mt-2 bg-white/20 inline-block px-2 py-0.5 rounded">⭐ Acceso Rápido</p>
+                </div>
+                <div class="bg-sky-500 rounded-2xl p-5 text-white">
+                    <p class="text-xs uppercase font-semibold opacity-80">Notificaciones</p>
+                    <h3 class="text-3xl font-black mt-1">1 Alerta</h3>
+                    <p class="text-xs mt-2 bg-white/20 inline-block px-2 py-0.5 rounded">🔔 Atraso estimado</p>
+                </div>
+                <div class="bg-indigo-600 rounded-2xl p-5 text-white">
+                    <p class="text-xs uppercase font-semibold opacity-80">Próximo Bus</p>
+                    <h3 class="text-3xl font-black mt-1">14:30 hrs</h3>
+                    <p class="text-xs mt-2 bg-white/20 inline-block px-2 py-0.5 rounded">🚍 Bus Liquiñe</p>
+                </div>
+            </div>
+
+            <div class="grid grid-cols-1 md:grid-cols-2 gap-6">
+                <!-- Mis Favoritos -->
+                <div class="bg-slate-900 border border-slate-800 rounded-2xl p-6">
+                    <h3 class="font-bold text-lg text-white mb-4 flex items-center gap-2">
+                        <span>⭐ Mis Recorridos Favoritos</span>
+                    </h3>
+                    <div class="space-y-3">
+                        <div class="p-3 bg-slate-950 rounded-xl border border-slate-800 flex justify-between items-center">
+                            <div>
+                                <h4 class="font-bold text-white text-sm">Panguipulli ➔ Coñaripe</h4>
+                                <p class="text-xs text-slate-400">Buses Liquiñe - Frecuencia Diaria</p>
+                            </div>
+                            <span class="text-xs font-mono font-bold text-blue-400 bg-blue-500/10 px-2.5 py-1 rounded-lg">14:30 hrs</span>
+                        </div>
+                        <div class="p-3 bg-slate-950 rounded-xl border border-slate-800 flex justify-between items-center">
+                            <div>
+                                <h4 class="font-bold text-white text-sm">Panguipulli ➔ Valdivia</h4>
+                                <p class="text-xs text-slate-400">Buses Pirehueico - Lunes a Viernes</p>
+                            </div>
+                            <span class="text-xs font-mono font-bold text-blue-400 bg-blue-500/10 px-2.5 py-1 rounded-lg">15:00 hrs</span>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Notificaciones de Viaje -->
+                <div class="bg-slate-900 border border-slate-800 rounded-2xl p-6">
+                    <h3 class="font-bold text-lg text-white mb-4 flex items-center gap-2">
+                        <span>🔔 Estado del Servicio en Vivo</span>
+                    </h3>
+                    <div class="p-4 bg-amber-500/10 border border-amber-500/30 rounded-xl text-amber-300 text-xs space-y-1">
+                        <p class="font-bold flex items-center gap-1.5 text-sm"><span>⚠️</span> Aviso de Tráfico</p>
+                        <p>El bus con destino a Valdivia presenta una demora leve de 5 minutos por mantención de ruta.</p>
+                    </div>
+                </div>
+            </div>
+        </section>
+
+    </main>
+
+    <!-- JAVASCRIPT DE CONTROL DE ROLES -->
     <script>
-        // Recuperar los datos del usuario logueado en index.html
-        const usuarioSesion = JSON.parse(localStorage.getItem('usuarioSesion')) || {
-            nombre: "Invitado",
-            email: "invitado@terminal.cl",
-            rol: "pasajero"
-        };
+        // Cargar fecha actual
+        document.getElementById('fecha-actual').innerText = new Date().toLocaleDateString('es-CL', {
+            weekday: 'long', year: 'numeric', month: 'long', day: 'numeric'
+        });
 
-        document.getElementById('perfil-nombre').innerText = usuarioSesion.nombre;
-        document.getElementById('perfil-email').innerText = usuarioSesion.email;
-        document.getElementById('perfil-avatar').innerText = usuarioSesion.nombre.charAt(0).toUpperCase();
+        // Obtener usuario de la sesión guardada
+        const usuarioSesion = JSON.parse(localStorage.getItem('usuarioSesion'));
 
-        const badge = document.getElementById('perfil-rol-badge');
-        if (usuarioSesion.rol === 'admin') {
-            badge.innerText = "Administrador";
-            badge.className = "px-2.5 py-1 rounded font-bold bg-rose-500/20 text-rose-400 border border-rose-500/30";
-        } else if (usuarioSesion.rol === 'empresa') {
-            badge.innerText = "Empresa de Transportes";
-            badge.className = "px-2.5 py-1 rounded font-bold bg-emerald-500/20 text-emerald-400 border border-emerald-500/30";
-        } else {
-            badge.innerText = "Pasajero / Usuario";
-            badge.className = "px-2.5 py-1 rounded font-bold bg-blue-500/20 text-blue-400 border border-blue-500/30";
+        function iniciarPanel() {
+            if (!usuarioSesion) {
+                alert('No has iniciado sesión. Serás redirigido al inicio.');
+                window.location.href = '/';
+                return;
+            }
+
+            // Actualizar interfaz con datos de la persona
+            document.getElementById('user-display-name').innerText = usuarioSesion.nombre || 'Usuario';
+            document.getElementById('user-role-badge').innerText = (usuarioSesion.rol || 'pasajero').toUpperCase();
+
+            // Ocultar todas las secciones primero
+            document.getElementById('panel-admin').classList.add('hidden');
+            document.getElementById('panel-empresa').classList.add('hidden');
+            document.getElementById('panel-chofer').classList.add('hidden');
+            document.getElementById('panel-pasajero').classList.add('hidden');
+
+            // Mostrar la correspondiente según el ROL
+            const rol = (usuarioSesion.rol || '').toLowerCase();
+            if (rol === 'admin') {
+                document.getElementById('panel-admin').classList.remove('hidden');
+                document.getElementById('avatar-container').innerText = '🛡️';
+            } else if (rol === 'empresa') {
+                document.getElementById('panel-empresa').classList.remove('hidden');
+                document.getElementById('avatar-container').innerText = '🏢';
+                cargarHorariosEmpresa();
+            } else if (rol === 'chofer') {
+                document.getElementById('panel-chofer').classList.remove('hidden');
+                document.getElementById('avatar-container').innerText = '👨‍✈️';
+            } else {
+                document.getElementById('panel-pasajero').classList.remove('hidden');
+                document.getElementById('avatar-container').innerText = '👤';
+            }
+        }
+
+        async function cargarHorariosEmpresa() {
+            try {
+                const res = await fetch('/api/horarios?tab=salidas');
+                const datos = await res.json();
+                const tbody = document.getElementById('tabla-empresa-horarios');
+                tbody.innerHTML = '';
+
+                if (Array.isArray(datos) && datos.length > 0) {
+                    datos.forEach(item => {
+                        tbody.innerHTML += `
+                            <tr class="hover:bg-slate-800/50">
+                                <td class="p-3 uppercase font-bold text-blue-400">${item.tipo}</td>
+                                <td class="p-3">${item.origen} ➔ <strong class="text-white">${item.destino}</strong></td>
+                                <td class="p-3 font-mono font-bold text-white">${item.salida}</td>
+                                <td class="p-3">Andén ${item.anden}</td>
+                                <td class="p-3">${item.dias}</td>
+                                <td class="p-3 text-right">
+                                    <button class="text-rose-400 hover:text-rose-300 font-semibold">Eliminar</button>
+                                </td>
+                            </tr>
+                        `;
+                    });
+                } else {
+                    tbody.innerHTML = `<tr><td colspan="6" class="p-4 text-center text-slate-500">No hay recorridos registrados.</td></tr>`;
+                }
+            } catch (e) {
+                console.error("Error al cargar datos:", e);
+            }
+        }
+
+        let gpsTransmitiendo = false;
+        function toggleGPSChofer() {
+            gpsTransmitiendo = !gpsTransmitiendo;
+            const btn = document.getElementById('btn-gps-chofer');
+            if (gpsTransmitiendo) {
+                btn.className = "w-full py-4 bg-rose-600 hover:bg-rose-500 text-white font-bold text-sm rounded-2xl transition shadow-lg shadow-rose-600/30 flex items-center justify-center gap-2";
+                btn.innerHTML = `<span class="w-3 h-3 rounded-full bg-white animate-ping"></span><span>DETENER TRANSMISIÓN GPS</span>`;
+                alert('GPS Activado. Tu ubicación se está mostrando a los pasajeros en el mapa.');
+            } else {
+                btn.className = "w-full py-4 bg-emerald-600 hover:bg-emerald-500 text-white font-bold text-sm rounded-2xl transition shadow-lg shadow-emerald-600/30 flex items-center justify-center gap-2";
+                btn.innerHTML = `<span class="w-3 h-3 rounded-full bg-white animate-ping"></span><span>INICIAR TRANSMISIÓN GPS EN TIEMPO REAL</span>`;
+            }
         }
 
         function cerrarSesion() {
-            // Elimina los datos de sesión y vuelve al inicio
             localStorage.removeItem('usuarioSesion');
             window.location.href = '/';
         }
+
+        iniciarPanel();
     </script>
 </body>
 </html>
