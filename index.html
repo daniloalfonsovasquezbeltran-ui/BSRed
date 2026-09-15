@@ -3,362 +3,398 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Tótem y Sistema de Gestión - Terminal Panguipulli</title>
-
+    <title>BSRed - Terminal de Buses Panguipulli</title>
+    <!-- Tailwind CSS desde CDN -->
     <script src="https://cdn.tailwindcss.com"></script>
-    
-    <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
-    <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
-
-    <style>
-        .custom-scrollbar::-webkit-scrollbar { width: 5px; }
-        .custom-scrollbar::-webkit-scrollbar-thumb { background: #334155; border-radius: 4px; }
-    </style>
+    <!-- Iconos FontAwesome -->
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
 </head>
-<body class="bg-slate-950 text-slate-100 h-screen w-screen overflow-hidden flex flex-col md:flex-row relative">
+<body class="bg-gray-100 font-sans min-h-screen flex flex-col">
 
-    <!-- BOTÓN FLOTANTE MÓVIL -->
-    <button onclick="toggleVistaMovil()" class="md:hidden absolute top-4 left-4 z-[1100] bg-blue-600 hover:bg-blue-500 text-white px-3 py-2 rounded-xl text-xs font-bold shadow-2xl flex items-center gap-1.5 transition">
-        <span id="btn-movil-icono">🗺️</span> <span id="btn-movil-txt">Ver Mapa</span>
-    </button>
-
-    <!-- PANEL IZQUIERDO -->
-    <aside id="panel-lateral" class="w-full md:w-[440px] h-full bg-slate-900 border-r border-slate-800 flex flex-col z-10 shadow-2xl absolute md:relative transition-all duration-300">
-        
-        <!-- Header con Botón de Usuario -->
-        <header class="p-4 border-b border-slate-800 bg-slate-900 flex items-center justify-between pl-20 md:pl-4">
-            <div>
-                <h1 class="text-lg font-bold text-white flex items-center gap-2">
-                    🚌 Terminal Panguipulli
-                </h1>
-                <p class="text-xs text-slate-400" id="info-usuario-head">Modo Pasajero (Invitado)</p>
-            </div>
-            <button onclick="abrirModalAuth()" id="btn-cuenta-header" class="px-3 py-1.5 bg-blue-600 hover:bg-blue-500 text-white text-xs font-semibold rounded-lg transition">
-                🔑 Ingresar
-            </button>
-        </header>
-
-        <!-- VISTA DE RUTAS -->
-        <div id="vista-rutas-publica" class="flex-1 flex flex-col overflow-hidden">
-            <div class="p-4 border-b border-slate-800 space-y-3">
-                <div class="flex bg-slate-800 p-1 rounded-lg text-xs font-semibold">
-                    <button id="tab-salidas" onclick="cambiarTab('salidas')" 
-                            class="flex-1 py-1.5 rounded-md bg-blue-600 text-white transition shadow font-bold">
-                        📤 Salidas
-                    </button>
-                    <button id="tab-llegadas" onclick="cambiarTab('llegadas')" 
-                            class="flex-1 py-1.5 rounded-md text-slate-400 hover:text-white transition">
-                        📥 Llegadas
-                    </button>
+    <!-- HEADER / NAVEGACIÓN -->
+    <header class="bg-red-700 text-white shadow-md sticky top-0 z-40">
+        <div class="max-w-7xl mx-auto px-4 py-3 flex justify-between items-center">
+            <!-- Logo BSRed -->
+            <div class="flex items-center space-x-3 cursor-pointer" onclick="cargarHorarios()">
+                <div class="bg-white text-red-700 p-2 rounded-lg font-black text-xl shadow">
+                    <i class="fa-solid fa-bus-simple"></i> BSRed
                 </div>
+                <span class="text-xs md:text-sm font-semibold tracking-wide hidden sm:inline">Terminal Panguipulli</span>
+            </div>
 
-                <input id="busqueda" type="search" placeholder="Buscar destino, empresa o andén..."
-                       oninput="onBusquedaChange()"
-                       class="w-full bg-slate-800 border border-slate-700 rounded-lg px-3 py-2 text-sm text-white focus:outline-none focus:border-blue-500">
-                
-                <button id="btn-reset" onclick="seleccionarHorario(null)" 
-                        class="w-full py-1.5 px-3 bg-slate-800 hover:bg-slate-700 text-blue-400 text-xs font-semibold rounded-lg border border-slate-700 transition flex items-center justify-center gap-1">
-                    🌐 Ver todas las rutas (<span id="txt-tab-actual">Salidas</span>)
+            <!-- Menú de Autenticación -->
+            <div id="auth-buttons" class="flex items-center space-x-2">
+                <button onclick="abrirModal('login')" class="bg-red-800 hover:bg-red-900 px-4 py-2 rounded-lg text-sm font-medium transition">
+                    <i class="fa-solid fa-right-to-bracket mr-1"></i> Iniciar Sesión
+                </button>
+                <button onclick="abrirModal('register')" class="bg-white text-red-700 hover:bg-gray-100 px-4 py-2 rounded-lg text-sm font-bold transition shadow">
+                    Registrarse
                 </button>
             </div>
 
-            <div id="lista-horarios" class="flex-1 overflow-y-auto p-4 space-y-3 custom-scrollbar"></div>
-        </div>
-    </aside>
-
-    <!-- PANEL DERECHO: MAPA EN TIEMPO REAL -->
-    <main class="flex-1 h-full relative bg-slate-950">
-        <div id="map" class="w-full h-full"></div>
-
-        <div class="absolute top-4 right-4 z-[1000] bg-slate-900/90 border border-slate-800 p-3 rounded-xl backdrop-blur text-xs space-y-1 shadow-lg">
-            <div class="flex items-center gap-2">
-                <span id="indicador-pulso" class="w-3 h-3 rounded-full bg-blue-500 animate-pulse"></span>
-                <span id="estado-mapa" class="font-medium text-slate-200">Cargando mapa...</span>
+            <!-- Perfil de Usuario Logueado (Oculto inicialmente) -->
+            <div id="user-profile" class="hidden flex items-center space-x-3">
+                <span id="user-display-name" class="text-sm font-semibold"></span>
+                <span id="user-role-badge" class="bg-red-900 text-xs px-2 py-1 rounded font-mono uppercase"></span>
+                <button onclick="cerrarSesion()" class="bg-gray-900 hover:bg-black px-3 py-1.5 rounded-lg text-xs font-medium transition">
+                    <i class="fa-solid fa-power-off"></i> Salir
+                </button>
             </div>
-            <div id="info-detalle-ruta" class="text-[11px] text-slate-400 font-mono hidden"></div>
+        </div>
+    </header>
+
+    <!-- SECCIÓN HÉROE CON BUSCADOR -->
+    <section class="bg-gradient-to-r from-red-800 to-red-600 text-white py-8 px-4 shadow-inner">
+        <div class="max-w-5xl mx-auto text-center">
+            <h1 class="text-2xl md:text-4xl font-extrabold mb-2">Consulta los Recorridos y Horarios en Tiempo Real</h1>
+            <p class="text-red-100 text-sm md:text-base mb-6">Información actualizada para pasajeros del Terminal de Buses de Panguipulli</p>
+            
+            <!-- Buscador y Filtro -->
+            <div class="bg-white p-3 rounded-xl shadow-lg text-gray-800 flex flex-col md:flex-row gap-2 max-w-3xl mx-auto">
+                <div class="flex-1 flex items-center bg-gray-50 border rounded-lg px-3 py-2">
+                    <i class="fa-solid fa-location-dot text-red-600 mr-2"></i>
+                    <input type="text" id="input-busqueda" onkeyup="filtrarTabla()" placeholder="Buscar por destino (Ej: Neltume, Valdivia, Coñaripe)..." class="w-full bg-transparent text-sm focus:outline-none">
+                </div>
+                <select id="select-tipo" onchange="filtrarTabla()" class="bg-gray-50 border rounded-lg px-3 py-2 text-sm focus:outline-none">
+                    <option value="todos">Todas las salidas/llegadas</option>
+                    <option value="salida">Solo Salidas</option>
+                    <option value="llegada">Solo Llegadas</option>
+                </select>
+            </div>
+        </div>
+    </section>
+
+    <!-- SECCIÓN PRINCIPAL: TABLA DE HORARIOS -->
+    <main class="max-w-7xl mx-auto px-4 py-6 flex-1 w-full">
+        <div class="bg-white rounded-xl shadow-md overflow-hidden border border-gray-200">
+            <div class="p-4 bg-gray-50 border-b flex justify-between items-center">
+                <h2 class="font-bold text-gray-800 flex items-center gap-2">
+                    <i class="fa-regular fa-clock text-red-600"></i> Itinerario del Terminal
+                </h2>
+                <button onclick="cargarHorarios()" class="text-xs text-red-700 hover:text-red-900 font-semibold flex items-center gap-1">
+                    <i class="fa-solid fa-rotate"></i> Actualizar
+                </button>
+            </div>
+
+            <div class="overflow-x-auto">
+                <table class="w-full text-left text-sm">
+                    <thead class="bg-gray-100 text-gray-600 uppercase text-xs tracking-wider border-b">
+                        <tr>
+                            <th class="p-3">Tipo</th>
+                            <th class="p-3">Empresa</th>
+                            <th class="p-3">Origen ➔ Destino</th>
+                            <th class="p-3">Horario</th>
+                            <th class="p-3">Andén</th>
+                            <th class="p-3">Estado</th>
+                            <th class="p-3">Tarifa</th>
+                            <th id="th-acciones" class="p-3 text-center hidden">Acción</th>
+                        </tr>
+                    </thead>
+                    <tbody id="tabla-horarios-body" class="divide-y divide-gray-200">
+                        <tr>
+                            <td colspan="8" class="text-center py-8 text-gray-500">
+                                <i class="fa-solid fa-spinner fa-spin text-2xl mb-2 text-red-600"></i>
+                                <p>Cargando horarios de la base de datos...</p>
+                            </td>
+                        </tr>
+                    </tbody>
+                </table>
+            </div>
         </div>
     </main>
 
-    <!-- MODAL DE AUTENTICACIÓN -->
-    <div id="modal-auth" class="fixed inset-0 bg-slate-950/80 backdrop-blur-sm z-[2000] flex items-center justify-center p-4 hidden">
-        <div class="w-full max-w-sm bg-slate-900 border border-slate-800 rounded-2xl p-6 shadow-2xl relative">
-            <button onclick="cerrarModalAuth()" class="absolute top-4 right-4 text-slate-400 hover:text-white">✕</button>
+    <!-- FOOTER -->
+    <footer class="bg-gray-800 text-gray-400 text-xs py-6 mt-8">
+        <div class="max-w-7xl mx-auto px-4 text-center">
+            <p class="mb-1"><strong>BSRed Panguipulli</strong> - Proyecto Tecnológico de Aprendizaje + Servicio (A+S)</p>
+            <p>Liceo Bicentenario People Help People de Pullinque &copy; 2026</p>
+        </div>
+    </footer>
 
-            <!-- INICIO DE SESIÓN -->
-            <form id="form-login" class="space-y-4" onsubmit="procesarLogin(event)">
-                <h2 class="text-xl font-bold text-white text-center">Iniciar Sesión</h2>
-                <div>
-                    <label class="block text-xs text-slate-300 mb-1">Correo Electrónico</label>
-                    <input type="email" id="login-email" required placeholder="correo@ejemplo.com"
-                           class="w-full bg-slate-800 border border-slate-700 rounded-lg px-3 py-2 text-sm text-white focus:outline-none focus:border-blue-500">
-                </div>
-                <div>
-                    <label class="block text-xs text-slate-300 mb-1">Contraseña</label>
-                    <input type="password" id="login-password" required placeholder="••••••••"
-                           class="w-full bg-slate-800 border border-slate-700 rounded-lg px-3 py-2 text-sm text-white focus:outline-none focus:border-blue-500">
-                </div>
-                <button type="submit" class="w-full bg-blue-600 hover:bg-blue-500 text-white font-semibold py-2 rounded-lg text-sm transition">
-                    Ingresar
-                </button>
-                <p class="text-center text-xs text-slate-400">
-                    ¿Sin cuenta? <button type="button" onclick="alternarAuth('registro')" class="text-blue-400 hover:underline">Regístrate</button>
-                </p>
-            </form>
+    <!-- MODAL DE LOGIN -->
+    <div id="modal-login" class="fixed inset-0 bg-black/50 hidden backdrop-blur-sm z-50 flex items-center justify-center p-4">
+        <div class="bg-white rounded-2xl max-w-md w-full p-6 shadow-2xl relative">
+            <button onclick="cerrarModal('login')" class="absolute top-4 right-4 text-gray-400 hover:text-gray-600">
+                <i class="fa-solid fa-xmark text-xl"></i>
+            </button>
+            <h3 class="text-xl font-bold text-gray-800 mb-1">Iniciar Sesión</h3>
+            <p class="text-xs text-gray-500 mb-4">Ingresa con tu correo registrado en BSRed</p>
 
-            <!-- REGISTRO -->
-            <form id="form-registro" class="space-y-4 hidden" onsubmit="procesarRegistro(event)">
-                <h2 class="text-xl font-bold text-white text-center">Crear Cuenta</h2>
+            <form id="form-login" onsubmit="ejecutarLogin(event)" class="space-y-4">
                 <div>
-                    <label class="block text-xs text-slate-300 mb-1">Nombre Completo / Empresa</label>
-                    <input type="text" id="reg-nombre" required placeholder="Ej: Juan Pérez"
-                           class="w-full bg-slate-800 border border-slate-700 rounded-lg px-3 py-2 text-sm text-white focus:outline-none focus:border-blue-500">
+                    <label class="block text-xs font-semibold text-gray-700 mb-1">Correo Electrónico</label>
+                    <input type="email" id="login-email" required placeholder="ejemplo@correo.com" class="w-full border rounded-lg px-3 py-2 text-sm focus:ring-2 focus:ring-red-600 focus:outline-none">
                 </div>
                 <div>
-                    <label class="block text-xs text-slate-300 mb-1">Correo Electrónico</label>
-                    <input type="email" id="reg-email" required placeholder="correo@ejemplo.com"
-                           class="w-full bg-slate-800 border border-slate-700 rounded-lg px-3 py-2 text-sm text-white focus:outline-none focus:border-blue-500">
+                    <label class="block text-xs font-semibold text-gray-700 mb-1">Contraseña</label>
+                    <input type="password" id="login-password" required placeholder="••••••••" class="w-full border rounded-lg px-3 py-2 text-sm focus:ring-2 focus:ring-red-600 focus:outline-none">
                 </div>
-                <div>
-                    <label class="block text-xs text-slate-300 mb-1">Tipo de Cuenta</label>
-                    <select id="reg-rol" class="w-full bg-slate-800 border border-slate-700 rounded-lg px-3 py-2 text-sm text-white focus:outline-none focus:border-blue-500">
-                        <option value="pasajero">Pasajero / Usuario Normal</option>
-                        <option value="empresa">Empresa de Transportes</option>
-                    </select>
-                </div>
-                <div>
-                    <label class="block text-xs text-slate-300 mb-1">Contraseña</label>
-                    <input type="password" id="reg-password" required placeholder="••••••••"
-                           class="w-full bg-slate-800 border border-slate-700 rounded-lg px-3 py-2 text-sm text-white focus:outline-none focus:border-blue-500">
-                </div>
-                <button type="submit" class="w-full bg-emerald-600 hover:bg-emerald-500 text-white font-semibold py-2 rounded-lg text-sm transition">
-                    Guardar Registro
+                <div id="login-alert" class="hidden text-xs p-3 rounded-lg border"></div>
+                <button type="submit" class="w-full bg-red-700 hover:bg-red-800 text-white font-bold py-2.5 rounded-lg text-sm transition shadow">
+                    Entrar a BSRed
                 </button>
-                <p class="text-center text-xs text-slate-400">
-                    ¿Ya tienes cuenta? <button type="button" onclick="alternarAuth('login')" class="text-blue-400 hover:underline">Inicia Sesión</button>
-                </p>
             </form>
         </div>
     </div>
 
+    <!-- MODAL DE REGISTRO -->
+    <div id="modal-register" class="fixed inset-0 bg-black/50 hidden backdrop-blur-sm z-50 flex items-center justify-center p-4">
+        <div class="bg-white rounded-2xl max-w-md w-full p-6 shadow-2xl relative">
+            <button onclick="cerrarModal('register')" class="absolute top-4 right-4 text-gray-400 hover:text-gray-600">
+                <i class="fa-solid fa-xmark text-xl"></i>
+            </button>
+            <h3 class="text-xl font-bold text-gray-800 mb-1">Crear una Cuenta</h3>
+            <p class="text-xs text-gray-500 mb-4">Regístrate para interactuar con la plataforma</p>
+
+            <form id="form-register" onsubmit="ejecutarRegistro(event)" class="space-y-3">
+                <div>
+                    <label class="block text-xs font-semibold text-gray-700 mb-1">Nombre Completo</label>
+                    <input type="text" id="reg-nombre" required placeholder="Juan Pérez" class="w-full border rounded-lg px-3 py-2 text-sm focus:ring-2 focus:ring-red-600 focus:outline-none">
+                </div>
+                <div>
+                    <label class="block text-xs font-semibold text-gray-700 mb-1">Correo Electrónico Real</label>
+                    <input type="email" id="reg-email" required placeholder="tu.correo@gmail.com" class="w-full border rounded-lg px-3 py-2 text-sm focus:ring-2 focus:ring-red-600 focus:outline-none">
+                </div>
+                <div>
+                    <label class="block text-xs font-semibold text-gray-700 mb-1">Contraseña</label>
+                    <input type="password" id="reg-password" required placeholder="••••••••" class="w-full border rounded-lg px-3 py-2 text-sm focus:ring-2 focus:ring-red-600 focus:outline-none">
+                </div>
+                <div>
+                    <label class="block text-xs font-semibold text-gray-700 mb-1">Tipo de Usuario</label>
+                    <select id="reg-rol" class="w-full border rounded-lg px-3 py-2 text-sm focus:ring-2 focus:ring-red-600 focus:outline-none">
+                        <option value="pasajero">Pasajero / Turista</option>
+                        <option value="chofer">Chofer de Bus</option>
+                        <option value="empresa">Representante de Empresa</option>
+                    </select>
+                </div>
+                <div id="reg-alert" class="hidden text-xs p-3 rounded-lg border"></div>
+                <button type="submit" class="w-full bg-red-700 hover:bg-red-800 text-white font-bold py-2.5 rounded-lg text-sm transition shadow">
+                    Completar Registro
+                </button>
+            </form>
+        </div>
+    </div>
+
+    <!-- JAVASCRIPT DEL FRONTEND -->
     <script>
-        const COORDENADAS = {
-            "panguipulli": [-39.6430, -72.3312],
-            "coñaripe":    [-39.5532, -71.9790],
-            "los lagos":   [-39.8511, -72.8228],
-            "villarrica":  [-39.2822, -72.2272],
-            "liquiñe":     [-39.7360, -71.8540],
-            "puerto fuy":  [-39.8660, -71.8885],
-            "valdivia":    [-39.8142, -73.2459],
-            "temuco":      [-38.7399, -72.5901]
-        };
+        let todosLosHorarios = [];
+        let usuarioActual = null;
 
-        const PALETA_SALIDAS = ["#3b82f6", "#06b6d4", "#10b981", "#6366f1", "#8b5cf6"];
-        const PALETA_LLEGADAS = ["#f59e0b", "#ec4899", "#f97316", "#ef4444", "#eab308"];
+        document.addEventListener('DOMContentLoaded', () => {
+            cargarHorarios();
+            verificarSesionGuardada();
+        });
 
-        const map = L.map('map').setView(COORDENADAS["panguipulli"], 10);
-        
-        // --- AQUÍ ESTÁ EL MAPA NUEVO SIN MARCA DE AGUA (ESRI DARK GRAY) ---
-        L.tileLayer('https://server.arcgisonline.com/ArcGIS/rest/services/Canvas/World_Dark_Gray_Base/MapServer/tile/{z}/{y}/{x}', { 
-            maxZoom: 16,
-            attribution: 'Tiles © Esri'
-        }).addTo(map);
-        // ------------------------------------------------------------------
-
-        let currentTab = 'salidas';
-        let datosHorarios = [];
-        let capasRutas = {};
-        let itemSeleccionadoIndex = null;
-        let mostrantoMapaMovil = false;
-
-        let usuarioSesion = JSON.parse(localStorage.getItem('usuarioSesion'));
-
-        function actualizarInterfazSesion() {
-            const btn = document.getElementById('btn-cuenta-header');
-            const info = document.getElementById('info-usuario-head');
-
-            if (!usuarioSesion) {
-                info.innerText = "Modo Pasajero (Invitado)";
-                btn.innerText = "🔑 Ingresar";
-                btn.onclick = abrirModalAuth;
-            } else {
-                info.innerText = `👤 Hola, ${usuarioSesion.nombre}`;
-                btn.innerText = "👤 Mi Perfil";
-                btn.onclick = () => { window.location.href = '/usuario'; };
-            }
-        }
-        
-        actualizarInterfazSesion();
-
-        function abrirModalAuth() { document.getElementById('modal-auth').classList.remove('hidden'); }
-        function cerrarModalAuth() { document.getElementById('modal-auth').classList.add('hidden'); }
-        
-        function alternarAuth(vista) {
-            document.getElementById('form-login').classList.toggle('hidden', vista !== 'login');
-            document.getElementById('form-registro').classList.toggle('hidden', vista !== 'registro');
-        }
-
-        function procesarLogin(e) {
-            e.preventDefault();
-            const email = document.getElementById('login-email').value;
-            const pass = document.getElementById('login-password').value;
-
-            if (email === "bsredpanguipulli@gmail.com" && pass === "csgo775599") {
-                usuarioSesion = { rol: "admin", nombre: "Admin General", email };
-            } else if (email.includes("empresa")) {
-                usuarioSesion = { rol: "empresa", nombre: "Empresa Transportes", email };
-            } else {
-                usuarioSesion = { rol: "pasajero", nombre: "Pasajero", email };
-            }
-
-            localStorage.setItem('usuarioSesion', JSON.stringify(usuarioSesion));
-            window.location.href = '/usuario'; 
-        }
-
-        async function procesarRegistro(e) {
-            e.preventDefault();
-            const payload = {
-                nombre: document.getElementById('reg-nombre').value,
-                email: document.getElementById('reg-email').value,
-                password: document.getElementById('reg-password').value,
-                rol: document.getElementById('reg-rol').value
-            };
-
+        async function cargarHorarios() {
+            const tbody = document.getElementById('tabla-horarios-body');
             try {
-                const res = await fetch('/api/registro', {
-                    method: 'POST',
-                    headers: { 'Content-Type': 'application/json' },
-                    body: JSON.stringify(payload)
-                });
-
-                if (res.ok) {
-                    alert('¡Cuenta creada exitosamente!');
-                    usuarioSesion = { rol: payload.rol, nombre: payload.nombre, email: payload.email };
-                    localStorage.setItem('usuarioSesion', JSON.stringify(usuarioSesion));
-                    window.location.href = '/usuario';
-                } else {
-                    alert('Error al crear usuario (quizás el correo ya existe).');
-                }
-            } catch (err) {
-                alert('Ocurrió un error de conexión.');
+                const response = await fetch('/api/horarios');
+                if (!response.ok) throw new Error('Error al conectar con la base de datos');
+                todosLosHorarios = await response.json();
+                renderizarTabla(todosLosHorarios);
+            } catch (error) {
+                console.error(error);
+                tbody.innerHTML = `
+                    <tr>
+                        <td colspan="8" class="text-center py-6 text-red-600 font-semibold">
+                            <i class="fa-solid fa-triangle-exclamation mr-1"></i> No se pudieron obtener los datos de horarios desde Supabase.
+                        </td>
+                    </tr>
+                `;
             }
         }
 
-        function toggleVistaMovil() {
-            mostrantoMapaMovil = !mostrantoMapaMovil;
-            const panel = document.getElementById('panel-lateral');
-            const icono = document.getElementById('btn-movil-icono');
-            const txt = document.getElementById('btn-movil-txt');
+        function renderizarTabla(lista) {
+            const tbody = document.getElementById('tabla-horarios-body');
+            tbody.innerHTML = '';
 
-            if (mostrantoMapaMovil) {
-                panel.style.transform = 'translateX(-100%)';
-                icono.innerText = '📋';
-                txt.innerText = 'Ver Panel';
-                setTimeout(() => { map.invalidateSize(); }, 300);
-            } else {
-                panel.style.transform = 'translateX(0)';
-                icono.innerText = '🗺️';
-                txt.innerText = 'Ver Mapa';
-            }
-        }
-
-        function onBusquedaChange() {
-            cargarDatosAPI();
-        }
-
-        async function cargarDatosAPI() {
-            document.getElementById("estado-mapa").innerText = "Obteniendo horarios...";
-            const query = document.getElementById('busqueda').value;
-            
-            try {
-                const res = await fetch(`/api/horarios?tab=${currentTab}&q=${encodeURIComponent(query)}`);
-                datosHorarios = await res.json();
-                renderizarLista();
-                actualizarMapa();
-            } catch (err) {
-                document.getElementById("estado-mapa").innerText = "Error de conexión";
-            }
-        }
-
-        function cambiarTab(tab) {
-            if (currentTab === tab) return;
-            currentTab = tab;
-            itemSeleccionadoIndex = null;
-            document.getElementById('tab-salidas').className = tab === 'salidas' ? 'flex-1 py-1.5 rounded-md bg-blue-600 text-white font-bold' : 'flex-1 py-1.5 text-slate-400';
-            document.getElementById('tab-llegadas').className = tab === 'llegadas' ? 'flex-1 py-1.5 rounded-md bg-amber-600 text-white font-bold' : 'flex-1 py-1.5 text-slate-400';
-            document.getElementById('txt-tab-actual').innerText = tab === 'salidas' ? "Salidas" : "Llegadas";
-            cargarDatosAPI();
-        }
-
-        function renderizarLista() {
-            const contenedor = document.getElementById("lista-horarios");
-            contenedor.innerHTML = "";
-            const paleta = currentTab === 'salidas' ? PALETA_SALIDAS : PALETA_LLEGADAS;
-
-            if (datosHorarios.length === 0) {
-                contenedor.innerHTML = `<div class="text-center text-slate-500 py-10 text-sm">No se encontraron recorridos.</div>`;
+            if (lista.length === 0) {
+                tbody.innerHTML = `
+                    <tr>
+                        <td colspan="8" class="text-center py-6 text-gray-500">
+                            No hay recorridos disponibles para esta búsqueda.
+                        </td>
+                    </tr>
+                `;
                 return;
             }
 
-            datosHorarios.forEach((item, index) => {
-                const color = paleta[index % paleta.length];
-                contenedor.innerHTML += `
-                <div onclick="seleccionarHorario(${index})"
-                     class="p-4 rounded-xl border transition cursor-pointer flex justify-between items-center ${
-                         itemSeleccionadoIndex === index ? 'bg-slate-800 border-blue-500 ring-2 ring-blue-500/30' : 'bg-slate-800/60 border-slate-700/60 hover:border-slate-500'
-                     }">
-                    <div class="space-y-1">
-                        <div class="flex items-center gap-2">
-                            <span class="w-3 h-3 rounded-full" style="background-color: ${color}"></span>
-                            <h3 class="font-bold text-white text-sm">${item.empresa}</h3>
-                            <span class="text-[10px] px-2 py-0.5 rounded-full bg-slate-700 text-slate-300">Andén ${item.anden}</span>
-                        </div>
-                        <p class="text-xs text-slate-300">${item.origen} ➔ <span class="font-bold text-white">${item.destino}</span></p>
-                    </div>
-                    <div class="text-right pl-2">
-                        <span class="text-xs text-slate-400 block">${currentTab === 'salidas' ? 'Salida' : 'Llegada'}</span>
-                        <span class="text-xl font-black text-white font-mono">${item.salida}</span>
-                    </div>
-                </div>`;
+            lista.forEach(item => {
+                let badgeColor = 'bg-green-100 text-green-800 border-green-300';
+                if (item.estado === 'Retrasado') badgeColor = 'bg-yellow-100 text-yellow-800 border-yellow-300';
+                if (item.estado === 'Cancelado') badgeColor = 'bg-red-100 text-red-800 border-red-300';
+                if (item.estado === 'En ruta') badgeColor = 'bg-blue-100 text-blue-800 border-blue-300';
+
+                let botonAccion = '';
+                if (usuarioActual && ['chofer', 'admin', 'empresa'].includes(usuarioActual.rol)) {
+                    botonAccion = `
+                        <td class="p-3 text-center">
+                            <select onchange="cambiarEstadoViaje(${item.id}, this.value)" class="text-xs border rounded px-1 py-1">
+                                <option value="" disabled selected>Cambiar Estado</option>
+                                <option value="A tiempo">A tiempo</option>
+                                <option value="En ruta">En ruta</option>
+                                <option value="Retrasado">Retrasado</option>
+                                <option value="Cancelado">Cancelado</option>
+                            </select>
+                        </td>
+                    `;
+                }
+
+                tbody.innerHTML += `
+                    <tr class="hover:bg-gray-50 transition">
+                        <td class="p-3 font-semibold">
+                            <span class="px-2 py-0.5 rounded text-xs font-mono uppercase ${item.tipo === 'salida' ? 'bg-red-50 text-red-700' : 'bg-blue-50 text-blue-700'}">
+                                ${item.tipo}
+                            </span>
+                        </td>
+                        <td class="p-3 font-bold text-gray-800">${item.empresa}</td>
+                        <td class="p-3">${item.origen} <i class="fa-solid fa-arrow-right text-xs text-gray-400 mx-1"></i> <strong class="text-gray-900">${item.destino}</strong></td>
+                        <td class="p-3 font-bold text-red-700">${item.salida} hrs</td>
+                        <td class="p-3"><span class="bg-gray-100 px-2 py-1 rounded border text-xs">${item.anden}</span></td>
+                        <td class="p-3">
+                            <span class="px-2 py-1 rounded-full text-xs font-bold border ${badgeColor}">
+                                ${item.estado}
+                            </span>
+                        </td>
+                        <td class="p-3 font-semibold text-gray-700">$${item.precio}</td>
+                        ${botonAccion}
+                    </tr>
+                `;
             });
         }
 
-        function actualizarMapa() {
-            Object.keys(capasRutas).forEach(k => {
-                map.removeLayer(capasRutas[k].polyline);
-            });
-            capasRutas = {};
+        function filtrarTabla() {
+            const busqueda = document.getElementById('input-busqueda').value.toLowerCase();
+            const tipo = document.getElementById('select-tipo').value;
 
-            const paleta = currentTab === 'salidas' ? PALETA_SALIDAS : PALETA_LLEGADAS;
-            let coordsTotales = [];
-
-            datosHorarios.forEach((item, index) => {
-                const origenGPS = COORDENADAS[(item.origen || "").toLowerCase()] || COORDENADAS["panguipulli"];
-                const destinoGPS = COORDENADAS[(item.destino || "").toLowerCase()] || COORDENADAS["panguipulli"];
-                
-                const ruta = [origenGPS, destinoGPS];
-                coordsTotales.push(...ruta);
-                const color = paleta[index % paleta.length];
-
-                const polyline = L.polyline(ruta, { color, weight: itemSeleccionadoIndex === index ? 6 : 3 }).addTo(map);
-                capasRutas[index] = { polyline };
+            const filtrados = todosLosHorarios.filter(item => {
+                const coincideTexto = item.destino.toLowerCase().includes(busqueda) || 
+                                     item.empresa.toLowerCase().includes(busqueda) || 
+                                     item.origen.toLowerCase().includes(busqueda);
+                const coincideTipo = (tipo === 'todos') || (item.tipo === tipo);
+                return coincideTexto && coincideTipo;
             });
 
-            if (coordsTotales.length > 0) {
-                map.fitBounds(L.latLngBounds(coordsTotales), { padding: [40, 40] });
-            } else {
-                map.setView(COORDENADAS["panguipulli"], 10);
+            renderizarTabla(filtrados);
+        }
+
+        function abrirModal(nombre) { document.getElementById(`modal-${nombre}`).classList.remove('hidden'); }
+        function cerrarModal(nombre) { document.getElementById(`modal-${nombre}`).classList.add('hidden'); }
+
+        async function ejecutarLogin(event) {
+            event.preventDefault();
+            const email = document.getElementById('login-email').value;
+            const password = document.getElementById('login-password').value;
+            const alertBox = document.getElementById('login-alert');
+
+            alertBox.classList.add('hidden');
+
+            try {
+                const response = await fetch('/api/login', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ email, password })
+                });
+
+                const data = await response.json();
+
+                if (data.success) {
+                    usuarioActual = data.user;
+                    localStorage.setItem('bsred_user', JSON.stringify(usuarioActual));
+                    actualizarInterfazUsuario();
+                    cerrarModal('login');
+                    cargarHorarios();
+                } else {
+                    alertBox.className = "text-xs p-3 rounded-lg border bg-red-50 text-red-700 border-red-200 mt-2";
+                    alertBox.innerText = data.message;
+                    alertBox.classList.remove('hidden');
+                }
+            } catch (err) {
+                console.error(err);
             }
-            
-            document.getElementById("estado-mapa").innerText = `${datosHorarios.length} rutas cargadas`;
         }
 
-        function seleccionarHorario(index) {
-            itemSeleccionadoIndex = itemSeleccionadoIndex === index ? null : index;
-            renderizarLista();
-            actualizarMapa();
+        async function ejecutarRegistro(event) {
+            event.preventDefault();
+            const nombre = document.getElementById('reg-nombre').value;
+            const email = document.getElementById('reg-email').value;
+            const password = document.getElementById('reg-password').value;
+            const rol = document.getElementById('reg-rol').value;
+            const alertBox = document.getElementById('reg-alert');
+
+            alertBox.classList.add('hidden');
+
+            try {
+                const response = await fetch('/api/register', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ nombre, email, password, rol })
+                });
+
+                const data = await response.json();
+
+                if (data.success) {
+                    alertBox.className = "text-xs p-3 rounded-lg border bg-green-50 text-green-700 border-green-200 mt-2";
+                    alertBox.innerText = data.message;
+                    alertBox.classList.remove('hidden');
+                    setTimeout(() => {
+                        cerrarModal('register');
+                        abrirModal('login');
+                    }, 1500);
+                } else {
+                    alertBox.className = "text-xs p-3 rounded-lg border bg-red-50 text-red-700 border-red-200 mt-2";
+                    alertBox.innerText = data.message;
+                    alertBox.classList.remove('hidden');
+                }
+            } catch (err) {
+                console.error(err);
+            }
         }
 
-        cargarDatosAPI();
+        function actualizarInterfazUsuario() {
+            if (usuarioActual) {
+                document.getElementById('auth-buttons').classList.add('hidden');
+                document.getElementById('user-profile').classList.remove('hidden');
+                document.getElementById('user-display-name').innerText = usuarioActual.nombre;
+                document.getElementById('user-role-badge').innerText = usuarioActual.rol;
+                document.getElementById('th-acciones').classList.remove('hidden');
+            } else {
+                document.getElementById('auth-buttons').classList.remove('hidden');
+                document.getElementById('user-profile').classList.add('hidden');
+                document.getElementById('th-acciones').classList.add('hidden');
+            }
+        }
+
+        function verificarSesionGuardada() {
+            const guardado = localStorage.getItem('bsred_user');
+            if (guardado) {
+                usuarioActual = JSON.parse(guardado);
+                actualizarInterfazUsuario();
+            }
+        }
+
+        function cerrarSesion() {
+            localStorage.removeItem('bsred_user');
+            usuarioActual = null;
+            actualizarInterfazUsuario();
+            cargarHorarios();
+        }
+
+        async function cambiarEstadoViaje(id, nuevoEstado) {
+            try {
+                const response = await fetch(`/api/horarios/${id}/estado`, {
+                    method: 'PUT',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ estado: nuevoEstado })
+                });
+                const data = await response.json();
+                if (data.success) {
+                    cargarHorarios();
+                }
+            } catch (err) {
+                console.error(err);
+            }
+        }
     </script>
 </body>
 </html>
