@@ -1,147 +1,184 @@
-from flask import Flask, render_template, jsonify, request, send_from_directory
 import os
+import re
+import dns.resolver
 import psycopg2
 from psycopg2.extras import RealDictCursor
+from flask import Flask, render_template, request, jsonify, session
 
-# Configuración para leer HTML, imágenes y PWA (sw.js, manifest.json) desde la raíz
-app = Flask(__name__, template_folder='.', static_folder='.', static_url_path='')
+app = Flask(__name__, template_folder='.', static_folder='.')
+app.secret_key = os.environ.get('SECRET_KEY', 'clave_secreta_bsred_panguipulli')
 
-# ==========================================
-# CONEXIÓN A LA BASE DE DATOS (SUPABASE)
-# ==========================================
+# Conexión a Supabase mediante la variable de entorno DATABASE_URL
+DATABASE_URL = os.environ.get('DATABASE_URL')
+
 def get_db_connection():
-    url = os.environ.get('DATABASE_URL')
+    url = DATABASE_URL
     if not url:
-        raise Exception("Error: La variable de entorno DATABASE_URL no está configurada.")
-    return psycopg2.connect(url, cursor_factory=RealDictCursor)
+        raise ValueError("La variable DATABASE_URL no está configurada.")
+    
+    # Ajustar prefijo de PostgreSQL si viene con formato antiguo
+    if url.startswith("postgres://"):
+        url = url.replace("postgres://", "postgresql://", 1)
+        
+    conn = psycopg2.connect(url, cursor_factory=RealDictCursor)
+    return conn
 
-# ==========================================
-# RUTAS DE PÁGINAS (VISTAS HTML)
-# ==========================================
+def es_correo_valido(email):
+    # Validar formato con Expresiones Regulares
+    patron = r'^[\w\.-]+@[\w\.-]+\.\w+$'
+    if not re.match(patron, email):
+        return False, "El formato del correo electrónico no es válido."
+    
+    # Validar que el dominio tenga servidores MX (servidores de correo reales)
+    try:
+        dominio = email.split('@')[1]
+        registros = dns.resolver.resolve(dominio, 'MX')
+        if len(registros) > 0:
+            return True, "Correo válido"
+        else:
+            return False, "El dominio del correo no posee servidores de correo activos."
+    except Exception:
+        return False, f"El dominio '@{email.split('@')[1]}' no existe en internet."
+
+# -------------------------------------------------------------
+# RUTAS DE PÁGINAS Y APIs
+# -------------------------------------------------------------
+
 @app.route('/')
 def index():
     return render_template('index.html')
 
-@app.route('/usuario')
-def usuario():
-    return render_template('usuario.html')
-
-# Servir manifest.json y sw.js para soporte PWA
-@app.route('/manifest.json')
-def manifest():
-    return send_from_directory('.', 'manifest.json')
-
-@app.route('/sw.js')
-def service_worker():
-    return send_from_directory('.', 'sw.js')
-
-# ==========================================
-# API ENDPOINTS (DATOS Y AUTENTICACIÓN)
-# ==========================================
-
+# API: Obtener todos los horarios
 @app.route('/api/horarios', methods=['GET'])
 def get_horarios():
-    tab = request.args.get('tab', 'salidas')
-    query_search = request.args.get('q', '').strip()
-    
-    tipo_filtro = 'salida' if tab == 'salidas' else 'llegada'
-
     try:
         conn = get_db_connection()
         cur = conn.cursor()
-
-        if query_search:
-            sql = """
-                SELECT * FROM horarios 
-                WHERE tipo = %s AND (
-                    LOWER(origen) LIKE LOWER(%s) OR 
-                    LOWER(destino) LIKE LOWER(%s) OR 
-                    LOWER(empresa) LIKE LOWER(%s)
-                )
-                ORDER BY salida ASC
-            """
-            wildcard = f"%{query_search}%"
-            cur.execute(sql, (tipo_filtro, wildcard, wildcard, wildcard))
-        else:
-            sql = "SELECT * FROM horarios WHERE tipo = %s ORDER BY salida ASC"
-            cur.execute(sql, (tipo_filtro,))
-
-        rows = cur.fetchall()
-        cur.close()
-        conn.close()
-        return jsonify(rows)
-
-    except Exception as e:
-        print("❌ Error en consulta /api/horarios:", e)
-        return jsonify([]), 500
-
-@app.route('/api/registro', methods=['POST'])
-def registro_usuario():
-    try:
-        datos = request.get_json()
-        nombre = datos.get('nombre')
-        email = datos.get('email')
-        password = datos.get('password')
-        rol = datos.get('rol', 'pasajero')
-
-        if not nombre or not email or not password:
-            return jsonify({'error': 'Todos los campos son obligatorios'}), 400
-
-        conn = get_db_connection()
-        cur = conn.cursor()
-
-        sql = """
-            INSERT INTO usuarios (nombre, email, password, rol) 
-            VALUES (%s, %s, %s, %s) 
-            RETURNING id, nombre, email, rol;
+        query = """
+            SELECT 
+                h.id, 
+                e.nombre AS empresa, 
+                h.origen, 
+                h.destino, 
+                TO_CHAR(h.salida, 'HH24:MI') AS salida, 
+                TO_CHAR(h.llegada, 'HH24:MI') AS llegada, 
+                h.tipo, 
+                h.dias, 
+                h.anden, 
+                h.estado, 
+                h.precio,
+                u.nombre AS chofer
+            FROM horarios h
+            JOIN empresas e ON h.empresa_id = e.id
+            LEFT JOIN usuarios u ON h.chofer_id = u.id
+            ORDER BY h.salida ASC;
         """
-        cur.execute(sql, (nombre, email, password, rol))
-        nuevo_usuario = cur.fetchone()
-        
-        conn.commit()
+        cur.execute(query)
+        horarios = cur.fetchall()
         cur.close()
         conn.close()
-
-        return jsonify({
-            'mensaje': 'Usuario registrado exitosamente',
-            'usuario': nuevo_usuario
-        }), 201
-
-    except psycopg2.IntegrityError:
-        return jsonify({'error': 'El correo electrónico ya está registrado'}), 400
+        return jsonify(horarios)
     except Exception as e:
-        print("❌ Error en registro:", e)
-        return jsonify({'error': 'Error interno del servidor'}), 500
+        return jsonify({'error': str(e)}), 500
 
+# API: Registro de usuarios con validación de correo real
+@app.route('/api/register', methods=['POST'])
+def register():
+    data = request.json
+    nombre = data.get('nombre', '').strip()
+    email = data.get('email', '').strip().lower()
+    password = data.get('password', '').strip()
+    rol = data.get('rol', 'pasajero')
+
+    if not nombre or not email or not password:
+        return jsonify({'success': False, 'message': 'Todos los campos son obligatorios'}), 400
+
+    # Validar dominio de correo real
+    es_valido, msg = es_correo_valido(email)
+    if not es_valido:
+        return jsonify({'success': False, 'message': msg}), 400
+
+    conn = get_db_connection()
+    cur = conn.cursor()
+
+    # Verificar si el correo ya existe en Supabase
+    cur.execute("SELECT id FROM usuarios WHERE LOWER(email) = %s", (email,))
+    if cur.fetchone():
+        cur.close()
+        conn.close()
+        return jsonify({'success': False, 'message': 'Este correo ya está registrado en BSRed.'}), 400
+
+    # Insertar usuario
+    cur.execute(
+        "INSERT INTO usuarios (nombre, email, password, rol) VALUES (%s, %s, %s, %s) RETURNING id;",
+        (nombre, email, password, rol)
+    )
+    nuevo_id = cur.fetchone()['id']
+    conn.commit()
+    cur.close()
+    conn.close()
+
+    return jsonify({'success': True, 'message': '¡Cuenta creada con éxito! Ya puedes iniciar sesión.'})
+
+# API: Login de usuarios con detección de errores
 @app.route('/api/login', methods=['POST'])
-def login_usuario():
-    try:
-        datos = request.get_json()
-        email = datos.get('email')
-        password = datos.get('password')
+def login():
+    data = request.json
+    email = data.get('email', '').strip().lower()
+    password = data.get('password', '').strip()
 
-        conn = get_db_connection()
-        cur = conn.cursor()
+    conn = get_db_connection()
+    cur = conn.cursor()
+    cur.execute("""
+        SELECT u.id, u.nombre, u.email, u.password, u.rol, u.empresa_id, e.nombre AS empresa_nombre 
+        FROM usuarios u
+        LEFT JOIN empresas e ON u.empresa_id = e.id
+        WHERE LOWER(u.email) = %s
+    """, (email,))
+    user = cur.fetchone()
 
-        sql = "SELECT id, nombre, email, rol FROM usuarios WHERE email = %s AND password = %s"
-        cur.execute(sql, (email, password))
-        usuario_encontrado = cur.fetchone()
-
+    if not user:
         cur.close()
         conn.close()
+        return jsonify({'success': False, 'message': 'El correo ingresado no existe en el sistema.'}), 404
 
-        if usuario_encontrado:
-            return jsonify({'status': 'ok', 'usuario': usuario_encontrado}), 200
-        else:
-            return jsonify({'error': 'Credenciales incorrectas'}), 401
+    if user['password'] != password:
+        cur.close()
+        conn.close()
+        return jsonify({'success': False, 'message': 'Contraseña incorrecta.'}), 401
 
-    except Exception as e:
-        print("❌ Error en login:", e)
-        return jsonify({'error': 'Error interno del servidor'}), 500
+    session['user_id'] = user['id']
+    session['rol'] = user['rol']
+    cur.close()
+    conn.close()
 
-# ==========================================
-# INICIALIZACIÓN DEL SERVIDOR
-# ==========================================
+    return jsonify({
+        'success': True,
+        'message': f'¡Bienvenido/a {user["nombre"]}!',
+        'user': {
+            'id': user['id'],
+            'nombre': user['nombre'],
+            'email': user['email'],
+            'rol': user['rol'],
+            'empresa_id': user['empresa_id'],
+            'empresa_nombre': user['empresa_nombre']
+        }
+    })
+
+# API: Cambiar estado del recorrido (Chofer / Empresa / Admin)
+@app.route('/api/horarios/<int:id>/estado', methods=['PUT'])
+def cambiar_estado(id):
+    data = request.json
+    nuevo_estado = data.get('estado')
+
+    conn = get_db_connection()
+    cur = conn.cursor()
+    cur.execute("UPDATE horarios SET estado = %s WHERE id = %s", (nuevo_estado, id))
+    conn.commit()
+    cur.close()
+    conn.close()
+
+    return jsonify({'success': True, 'message': 'Estado del viaje actualizado correctamente.'})
+
 if __name__ == '__main__':
-    port = int(os.environ.get('PORT', 5000))
-    app.run(host='0.0.0.0', port=port, debug=True)
+    app.run(debug=True)
