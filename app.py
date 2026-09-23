@@ -1,14 +1,13 @@
 import os
 import psycopg2
 from psycopg2.extras import RealDictCursor
-from flask import Flask, render_template, request, jsonify, send_from_directory
+from flask import Flask, request, jsonify, send_from_directory
 from flask_cors import CORS
 from dotenv import load_dotenv
 
 load_dotenv()
 
-# Configura Flask para encontrar index.html tanto en la raíz como en /templates
-app = Flask(__name__, template_folder='.', static_folder='.')
+app = Flask(__name__, static_folder='.')
 CORS(app)
 
 DATABASE_URL = os.environ.get('DATABASE_URL')
@@ -17,17 +16,16 @@ def get_db_connection():
     url = DATABASE_URL
     if not url:
         return None
-    # Adaptación para compatibilidad de URI PostgreSQL en Render/Supabase
     if url.startswith("postgres://"):
         url = url.replace("postgres://", "postgresql://", 1)
     try:
         conn = psycopg2.connect(url, cursor_factory=RealDictCursor)
         return conn
     except Exception as e:
-        print(f"⚠️ Error conectando a la base de datos Supabase: {e}")
+        print(f"⚠️ Error de conexión a la base de datos: {e}")
         return None
 
-# Datos de respaldo en caso de que la base de datos no responda o se encuentre pausada
+# Datos de respaldo (por si la base de datos no está disponible)
 MOCK_HORARIOS = [
     {"id": 1, "origen": "Panguipulli", "destino": "Valdivia", "salida": "08:00", "empresa": "Buses Panguipulli", "anden": "Andén 1", "estado": "A tiempo", "tipo": "salida", "precio": 3500},
     {"id": 2, "origen": "Panguipulli", "destino": "Los Lagos", "salida": "09:30", "empresa": "Tur Bus", "anden": "Andén 3", "estado": "En ruta", "tipo": "salida", "precio": 2800},
@@ -36,16 +34,15 @@ MOCK_HORARIOS = [
     {"id": 5, "origen": "Coñaripe", "destino": "Panguipulli", "salida": "12:00", "empresa": "Buses Panguipulli", "anden": "Andén 1", "estado": "A tiempo", "tipo": "llegada", "precio": 2000}
 ]
 
-# RUTA PRINCIPAL (Frontend)
+# RUTA PRINCIPAL (Servir HTML directamente)
 @app.route('/')
 def index():
-    # Busca index.html dentro de templates/ o directamente en la raíz
     if os.path.exists(os.path.join(app.root_path, 'templates', 'index.html')):
-        return render_template('templates/index.html')
+        return send_from_directory('templates', 'index.html')
     elif os.path.exists(os.path.join(app.root_path, 'index.html')):
         return send_from_directory('.', 'index.html')
     else:
-        return "Error: No se encontró el archivo index.html en la raíz ni en la carpeta templates.", 404
+        return "Error: No se encontró el archivo index.html en el proyecto.", 404
 
 # OBTENER HORARIOS
 @app.route('/api/horarios', methods=['GET'])
@@ -64,7 +61,7 @@ def obtener_horarios():
         print(f"Error consultando base de datos: {e}")
         return jsonify(MOCK_HORARIOS)
 
-# ACTUALIZAR ESTADO DE VIAJE (Chofer / Empresa / Admin)
+# ACTUALIZAR ESTADO DE VIAJE
 @app.route('/api/horarios/<int:id>/estado', methods=['PUT'])
 def actualizar_estado(id):
     datos = request.get_json() or {}
