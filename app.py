@@ -27,38 +27,68 @@ def get_db_connection():
 
 # Datos de respaldo por si la base de datos no responde
 MOCK_HORARIOS = [
-    {"id": 1, "origen": "Panguipulli", "destino": "Valdivia", "salida": "08:00", "empresa": "Buses Panguipulli", "anden": "Andén 1", "estado": "A tiempo", "tipo": "salida", "precio": 3500},
-    {"id": 2, "origen": "Panguipulli", "destino": "Los Lagos", "salida": "09:30", "empresa": "Tur Bus", "anden": "Andén 3", "estado": "En ruta", "tipo": "salida", "precio": 2800},
-    {"id": 3, "origen": "Lican Ray", "destino": "Panguipulli", "salida": "10:15", "empresa": "Buses Jac", "anden": "Andén 2", "estado": "Retrasado", "tipo": "llegada", "precio": 2500},
-    {"id": 4, "origen": "Panguipulli", "destino": "Choshuenco", "salida": "11:00", "empresa": "Buses Pirehueico", "anden": "Andén 4", "estado": "A tiempo", "tipo": "salida", "precio": 3000},
-    {"id": 5, "origen": "Coñaripe", "destino": "Panguipulli", "salida": "12:00", "empresa": "Buses Panguipulli", "anden": "Andén 1", "estado": "A tiempo", "tipo": "llegada", "precio": 2000}
+    {"id": 1, "origen": "Panguipulli", "destino": "Valdivia", "salida": "08:00", "empresa": "Buses Panguipulli", "anden": "1", "estado": "A tiempo", "tipo": "salida", "precio": 3500, "dias": "Lunes a Viernes"},
+    {"id": 2, "origen": "Panguipulli", "destino": "Los Lagos", "salida": "09:30", "empresa": "Tur Bus", "anden": "3", "estado": "En ruta", "tipo": "salida", "precio": 2800, "dias": "Diario"},
+    {"id": 3, "origen": "Lican Ray", "destino": "Panguipulli", "salida": "10:15", "empresa": "Buses Jac", "anden": "2", "estado": "Retrasado", "tipo": "llegada", "precio": 2500, "dias": "Diario"},
+    {"id": 4, "origen": "Panguipulli", "destino": "Choshuenco", "salida": "11:00", "empresa": "Buses Pirehueico", "anden": "4", "estado": "A tiempo", "tipo": "salida", "precio": 3000, "dias": "Lunes a Sábado"},
+    {"id": 5, "origen": "Coñaripe", "destino": "Panguipulli", "salida": "12:00", "empresa": "Buses Panguipulli", "anden": "1", "estado": "A tiempo", "tipo": "llegada", "precio": 2000, "dias": "Diario"}
 ]
 
-# RUTA PRINCIPAL (Servir el archivo index.html)
+# RUTA 1: PÁGINA PRINCIPAL (index.html)
 @app.route('/')
 def index():
     if os.path.exists(os.path.join(app.root_path, 'templates', 'index.html')):
         return send_from_directory('templates', 'index.html')
-    return send_from_directory('.', 'index.html')
+    elif os.path.exists(os.path.join(app.root_path, 'index.html')):
+        return send_from_directory('.', 'index.html')
+    return "Error: No se encontró el archivo index.html", 404
 
-# OBTENER HORARIOS
+# RUTA 2: PANEL DE USUARIO (usuario.html) - Solución al error 404
+@app.route('/usuario')
+def usuario():
+    if os.path.exists(os.path.join(app.root_path, 'templates', 'usuario.html')):
+        return send_from_directory('templates', 'usuario.html')
+    elif os.path.exists(os.path.join(app.root_path, 'usuario.html')):
+        return send_from_directory('.', 'usuario.html')
+    return "Error: No se encontró el archivo usuario.html", 404
+
+# OBTENER HORARIOS (con soporte de filtros tab y busqueda)
 @app.route('/api/horarios', methods=['GET'])
 def obtener_horarios():
-    conn = get_db_connection()
-    if not conn:
-        return jsonify(MOCK_HORARIOS)
-    
-    try:
-        with conn.cursor() as cur:
-            cur.execute("SELECT * FROM horarios ORDER BY salida ASC;")
-            horarios = cur.fetchall()
-            conn.close()
-            return jsonify(horarios if horarios else MOCK_HORARIOS)
-    except Exception as e:
-        print(f"Error consultando base de datos: {e}")
-        return jsonify(MOCK_HORARIOS)
+    tab = request.args.get('tab', '')
+    q = request.args.get('q', '').lower()
 
-# ACTUALIZAR ESTADO DE VIAJE (Chofer / Empresa / Admin)
+    conn = get_db_connection()
+    lista = MOCK_HORARIOS
+
+    if conn:
+        try:
+            with conn.cursor() as cur:
+                cur.execute("SELECT * FROM horarios ORDER BY salida ASC;")
+                res = cur.fetchall()
+                if res:
+                    lista = res
+            conn.close()
+        except Exception as e:
+            print(f"Error consultando base de datos: {e}")
+
+    # Filtrar según tab y q si vienen desde index.html
+    if tab:
+        tipo_filtro = "salida" if "salida" in tab.lower() else "llegada"
+        lista = [h for h in lista if str(h.get("tipo", "")).lower() == tipo_filtro]
+
+    if q:
+        lista = [
+            h for h in lista if 
+            q in str(h.get("destino", "")).lower() or 
+            q in str(h.get("origen", "")).lower() or 
+            q in str(h.get("empresa", "")).lower() or 
+            q in str(h.get("anden", "")).lower()
+        ]
+
+    return jsonify(lista)
+
+# ACTUALIZAR ESTADO DE VIAJE
 @app.route('/api/horarios/<int:id>/estado', methods=['PUT'])
 def actualizar_estado(id):
     datos = request.get_json() or {}
@@ -72,7 +102,7 @@ def actualizar_estado(id):
         for h in MOCK_HORARIOS:
             if h["id"] == id:
                 h["estado"] = nuevo_estado
-        return jsonify({"success": True, "message": "Estado actualizado (modo resguardo)"})
+        return jsonify({"success": True, "message": "Estado actualizado"})
 
     try:
         with conn.cursor() as cur:
@@ -110,8 +140,9 @@ def login():
     except Exception as e:
         return jsonify({"success": False, "message": "Error al iniciar sesión"}), 500
 
-# REGISTRO DE USUARIOS
+# REGISTRO DE USUARIOS (Soporta /api/register y /api/registro)
 @app.route('/api/register', methods=['POST'])
+@app.route('/api/registro', methods=['POST'])
 def register():
     datos = request.get_json() or {}
     nombre = datos.get('nombre')
