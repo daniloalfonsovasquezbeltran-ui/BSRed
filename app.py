@@ -7,7 +7,7 @@ from dotenv import load_dotenv
 
 load_dotenv()
 
-app = Flask(__name__, static_folder='.')
+app = Flask(__name__, template_folder='.', static_folder='.')
 CORS(app)
 
 DATABASE_URL = os.environ.get('DATABASE_URL')
@@ -22,10 +22,10 @@ def get_db_connection():
         conn = psycopg2.connect(url, cursor_factory=RealDictCursor)
         return conn
     except Exception as e:
-        print(f"⚠️ Error de conexión a la base de datos: {e}")
+        print(f"⚠️ Error de conexión a Supabase: {e}")
         return None
 
-# Datos de respaldo (por si la base de datos no está disponible)
+# Datos de respaldo por si la base de datos no responde
 MOCK_HORARIOS = [
     {"id": 1, "origen": "Panguipulli", "destino": "Valdivia", "salida": "08:00", "empresa": "Buses Panguipulli", "anden": "Andén 1", "estado": "A tiempo", "tipo": "salida", "precio": 3500},
     {"id": 2, "origen": "Panguipulli", "destino": "Los Lagos", "salida": "09:30", "empresa": "Tur Bus", "anden": "Andén 3", "estado": "En ruta", "tipo": "salida", "precio": 2800},
@@ -34,15 +34,12 @@ MOCK_HORARIOS = [
     {"id": 5, "origen": "Coñaripe", "destino": "Panguipulli", "salida": "12:00", "empresa": "Buses Panguipulli", "anden": "Andén 1", "estado": "A tiempo", "tipo": "llegada", "precio": 2000}
 ]
 
-# RUTA PRINCIPAL (Servir HTML directamente)
+# RUTA PRINCIPAL (Servir el archivo index.html)
 @app.route('/')
 def index():
     if os.path.exists(os.path.join(app.root_path, 'templates', 'index.html')):
         return send_from_directory('templates', 'index.html')
-    elif os.path.exists(os.path.join(app.root_path, 'index.html')):
-        return send_from_directory('.', 'index.html')
-    else:
-        return "Error: No se encontró el archivo index.html en el proyecto.", 404
+    return send_from_directory('.', 'index.html')
 
 # OBTENER HORARIOS
 @app.route('/api/horarios', methods=['GET'])
@@ -61,7 +58,7 @@ def obtener_horarios():
         print(f"Error consultando base de datos: {e}")
         return jsonify(MOCK_HORARIOS)
 
-# ACTUALIZAR ESTADO DE VIAJE
+# ACTUALIZAR ESTADO DE VIAJE (Chofer / Empresa / Admin)
 @app.route('/api/horarios/<int:id>/estado', methods=['PUT'])
 def actualizar_estado(id):
     datos = request.get_json() or {}
