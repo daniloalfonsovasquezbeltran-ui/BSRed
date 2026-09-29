@@ -3,362 +3,550 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Tótem y Sistema de Gestión - Terminal Panguipulli</title>
-
-    <script src="https://cdn.tailwindcss.com"></script>
-    
-    <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
-    <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
-
+    <title>Horarios de Buses - Terminal Panguipulli</title>
+    <link rel="manifest" href="/manifest.json">
+    <link rel="icon" type="image/png" href="/logo_192.png">
     <style>
-        .custom-scrollbar::-webkit-scrollbar { width: 5px; }
-        .custom-scrollbar::-webkit-scrollbar-thumb { background: #334155; border-radius: 4px; }
+        /* ESTILOS BASE */
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+            font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+        }
+
+        body {
+            background-color: #f3f4f6;
+            color: #1f2937;
+            min-height: 100vh;
+        }
+
+        /* ENCABEZADO */
+        header {
+            background-color: #1e40af;
+            color: white;
+            padding: 1rem 1.5rem;
+            box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.1);
+        }
+
+        .header-content {
+            max-width: 1100px;
+            margin: 0 auto;
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+        }
+
+        .logo-title {
+            display: flex;
+            align-items: center;
+            gap: 12px;
+        }
+
+        .logo-title img {
+            width: 45px;
+            height: 45px;
+            border-radius: 50%;
+            border: 2px solid white;
+            object-fit: cover;
+            background-color: white;
+        }
+
+        .logo-title h1 {
+            font-size: 1.3rem;
+            font-weight: bold;
+            letter-spacing: 0.5px;
+        }
+
+        .nav-buttons {
+            display: flex;
+            gap: 10px;
+        }
+
+        /* BOTONES GLOBALES */
+        .btn {
+            padding: 8px 16px;
+            border-radius: 8px;
+            font-size: 0.9rem;
+            font-weight: 600;
+            border: none;
+            cursor: pointer;
+            transition: background-color 0.2s;
+            text-decoration: none;
+            display: inline-block;
+        }
+
+        .btn-blue {
+            background-color: #2563eb;
+            color: white;
+        }
+        .btn-blue:hover { background-color: #1d4ed8; }
+
+        .btn-green {
+            background-color: #16a34a;
+            color: white;
+        }
+        .btn-green:hover { background-color: #15803d; }
+
+        .btn-red {
+            background-color: #dc2626;
+            color: white;
+        }
+        .btn-red:hover { background-color: #b91c1c; }
+
+        /* CONTENEDOR PRINCIPAL */
+        main {
+            max-width: 1100px;
+            margin: 2rem auto;
+            padding: 0 1rem;
+        }
+
+        .panel-blanco {
+            background-color: white;
+            border-radius: 12px;
+            padding: 1.5rem;
+            box-shadow: 0 1px 3px rgba(0,0,0,0.1);
+        }
+
+        /* CONTROLES SUPERIORES (PESTAÑAS Y BUSCADOR) */
+        .controles {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            flex-wrap: wrap;
+            gap: 1rem;
+            margin-bottom: 1.5rem;
+            border-bottom: 1px solid #e5e7eb;
+            padding-bottom: 1rem;
+        }
+
+        .pestanas {
+            display: flex;
+            gap: 15px;
+        }
+
+        .tab-btn {
+            background: none;
+            border: none;
+            font-size: 1rem;
+            font-weight: 600;
+            color: #6b7280;
+            cursor: pointer;
+            padding-bottom: 8px;
+            border-bottom: 3px solid transparent;
+        }
+
+        .tab-btn.activo {
+            color: #2563eb;
+            border-bottom-color: #2563eb;
+        }
+
+        .buscador input {
+            padding: 10px 15px;
+            border: 1px solid #d1d5db;
+            border-radius: 8px;
+            width: 300px;
+            max-width: 100%;
+            outline: none;
+        }
+
+        .buscador input:focus {
+            border-color: #2563eb;
+            box-shadow: 0 0 0 2px rgba(37,99,235,0.2);
+        }
+
+        /* TABLA DE HORARIOS */
+        .tabla-contenedor {
+            overflow-x: auto;
+        }
+
+        table {
+            width: 100%;
+            border-collapse: collapse;
+            text-align: left;
+        }
+
+        th {
+            background-color: #f9fafb;
+            color: #4b5563;
+            font-size: 0.85rem;
+            text-transform: uppercase;
+            padding: 12px 15px;
+            border-bottom: 2px solid #e5e7eb;
+        }
+
+        td {
+            padding: 12px 15px;
+            border-bottom: 1px solid #f3f4f6;
+            color: #374151;
+        }
+
+        tr:hover td {
+            background-color: #f8fafc;
+        }
+
+        .col-hora {
+            font-weight: bold;
+            color: #1e3a8a;
+        }
+
+        .etiqueta-anden {
+            background-color: #e5e7eb;
+            color: #374151;
+            padding: 4px 8px;
+            border-radius: 6px;
+            font-size: 0.8rem;
+            font-weight: 600;
+        }
+
+        .etiqueta-estado {
+            padding: 5px 10px;
+            border-radius: 20px;
+            font-size: 0.75rem;
+            font-weight: bold;
+            display: inline-block;
+        }
+
+        .estado-atiempo { background-color: #dcfce7; color: #16a34a; }
+        .estado-retrasado { background-color: #fee2e2; color: #dc2626; }
+        .estado-enruta { background-color: #fef9c3; color: #ca8a04; }
+
+        /* VENTANAS MODALES */
+        .modal-fondo {
+            position: fixed;
+            top: 0;
+            left: 0;
+            width: 100vw;
+            height: 100vh;
+            background-color: rgba(0, 0, 0, 0.6);
+            display: none; /* Oculto por defecto */
+            justify-content: center;
+            align-items: center;
+            z-index: 999;
+            padding: 1rem;
+        }
+
+        .modal-fondo.mostrar {
+            display: flex;
+        }
+
+        .modal-caja {
+            background: white;
+            width: 100%;
+            max-width: 400px;
+            border-radius: 12px;
+            padding: 2rem;
+            position: relative;
+            box-shadow: 0 10px 25px rgba(0,0,0,0.2);
+        }
+
+        .btn-cerrar {
+            position: absolute;
+            top: 15px;
+            right: 15px;
+            background: none;
+            border: none;
+            font-size: 1.5rem;
+            color: #9ca3af;
+            cursor: pointer;
+        }
+
+        .modal-caja h2 {
+            text-align: center;
+            margin-bottom: 1.5rem;
+            color: #111827;
+        }
+
+        .grupo-form {
+            margin-bottom: 1rem;
+        }
+
+        .grupo-form label {
+            display: block;
+            margin-bottom: 0.5rem;
+            font-size: 0.85rem;
+            font-weight: bold;
+            color: #374151;
+        }
+
+        .grupo-form input {
+            width: 100%;
+            padding: 10px;
+            border: 1px solid #d1d5db;
+            border-radius: 8px;
+            outline: none;
+        }
+
+        .grupo-form input:focus {
+            border-color: #2563eb;
+            box-shadow: 0 0 0 2px rgba(37,99,235,0.2);
+        }
+
+        .btn-largo {
+            width: 100%;
+            padding: 10px;
+            margin-top: 10px;
+            font-size: 1rem;
+        }
+
+        .modal-enlace {
+            text-align: center;
+            margin-top: 1.5rem;
+            font-size: 0.85rem;
+            color: #6b7280;
+        }
+
+        .modal-enlace button {
+            background: none;
+            border: none;
+            color: #2563eb;
+            font-weight: bold;
+            cursor: pointer;
+            text-decoration: underline;
+        }
     </style>
 </head>
-<body class="bg-slate-950 text-slate-100 h-screen w-screen overflow-hidden flex flex-col md:flex-row relative">
+<body>
 
-    <!-- BOTÓN FLOTANTE MÓVIL -->
-    <button onclick="toggleVistaMovil()" class="md:hidden absolute top-4 left-4 z-[1100] bg-blue-600 hover:bg-blue-500 text-white px-3 py-2 rounded-xl text-xs font-bold shadow-2xl flex items-center gap-1.5 transition">
-        <span id="btn-movil-icono">🗺️</span> <span id="btn-movil-txt">Ver Mapa</span>
-    </button>
-
-    <!-- PANEL IZQUIERDO -->
-    <aside id="panel-lateral" class="w-full md:w-[440px] h-full bg-slate-900 border-r border-slate-800 flex flex-col z-10 shadow-2xl absolute md:relative transition-all duration-300">
-        
-        <!-- Header con Botón de Usuario -->
-        <header class="p-4 border-b border-slate-800 bg-slate-900 flex items-center justify-between pl-20 md:pl-4">
-            <div>
-                <h1 class="text-lg font-bold text-white flex items-center gap-2">
-                    🚌 BSRed Panguipulli
-                </h1>
-                <p class="text-xs text-slate-400" id="info-usuario-head">Modo Pasajero (Invitado)</p>
+    <!-- BARRA SUPERIOR -->
+    <header>
+        <div class="header-content">
+            <div class="logo-title">
+                <img src="/logo.jpg" alt="Logo" onerror="this.src='/logo_192.png'">
+                <h1>Terminal Panguipulli</h1>
             </div>
-            <button onclick="abrirModalAuth()" id="btn-cuenta-header" class="px-3 py-1.5 bg-blue-600 hover:bg-blue-500 text-white text-xs font-semibold rounded-lg transition">
-                🔑 Ingresar
-            </button>
-        </header>
-
-        <!-- VISTA DE RUTAS -->
-        <div id="vista-rutas-publica" class="flex-1 flex flex-col overflow-hidden">
-            <div class="p-4 border-b border-slate-800 space-y-3">
-                <div class="flex bg-slate-800 p-1 rounded-lg text-xs font-semibold">
-                    <button id="tab-salidas" onclick="cambiarTab('salidas')" 
-                            class="flex-1 py-1.5 rounded-md bg-blue-600 text-white transition shadow font-bold">
-                        📤 Salidas
-                    </button>
-                    <button id="tab-llegadas" onclick="cambiarTab('llegadas')" 
-                            class="flex-1 py-1.5 rounded-md text-slate-400 hover:text-white transition">
-                        📥 Llegadas
-                    </button>
-                </div>
-
-                <input id="busqueda" type="search" placeholder="Buscar destino, empresa o andén..."
-                       oninput="onBusquedaChange()"
-                       class="w-full bg-slate-800 border border-slate-700 rounded-lg px-3 py-2 text-sm text-white focus:outline-none focus:border-blue-500">
-                
-                <button id="btn-reset" onclick="seleccionarHorario(null)" 
-                        class="w-full py-1.5 px-3 bg-slate-800 hover:bg-slate-700 text-blue-400 text-xs font-semibold rounded-lg border border-slate-700 transition flex items-center justify-center gap-1">
-                    🌐 Ver todas las rutas (<span id="txt-tab-actual">Salidas</span>)
-                </button>
+            <div id="caja-botones-nav" class="nav-buttons">
+                <button onclick="abrirModal('modal-login')" class="btn btn-blue">Iniciar Sesión</button>
+                <button onclick="abrirModal('modal-registro')" class="btn btn-green">Registrarse</button>
             </div>
-
-            <div id="lista-horarios" class="flex-1 overflow-y-auto p-4 space-y-3 custom-scrollbar"></div>
         </div>
-    </aside>
+    </header>
 
-    <!-- PANEL DERECHO: MAPA EN TIEMPO REAL -->
-    <main class="flex-1 h-full relative bg-slate-950">
-        <div id="map" class="w-full h-full"></div>
-
-        <div class="absolute top-4 right-4 z-[1000] bg-slate-900/90 border border-slate-800 p-3 rounded-xl backdrop-blur text-xs space-y-1 shadow-lg">
-            <div class="flex items-center gap-2">
-                <span id="indicador-pulso" class="w-3 h-3 rounded-full bg-blue-500 animate-pulse"></span>
-                <span id="estado-mapa" class="font-medium text-slate-200">Cargando mapa...</span>
+    <!-- PANEL CENTRAL -->
+    <main>
+        <div class="panel-blanco">
+            
+            <div class="controles">
+                <div class="pestanas">
+                    <button id="btn-salidas" onclick="cambiarPestana('salidas')" class="tab-btn activo">Salidas</button>
+                    <button id="btn-llegadas" onclick="cambiarPestana('llegadas')" class="tab-btn">Llegadas</button>
+                </div>
+                <div class="buscador">
+                    <input type="text" id="input-busqueda" oninput="cargarDatos()" placeholder="Buscar destino o empresa...">
+                </div>
             </div>
-            <div id="info-detalle-ruta" class="text-[11px] text-slate-400 font-mono hidden"></div>
+
+            <div class="tabla-contenedor">
+                <table>
+                    <thead>
+                        <tr>
+                            <th>Horario</th>
+                            <th>Origen</th>
+                            <th>Destino</th>
+                            <th>Empresa</th>
+                            <th>Andén</th>
+                            <th>Precio</th>
+                            <th>Estado</th>
+                        </tr>
+                    </thead>
+                    <tbody id="cuerpo-tabla">
+                        <tr>
+                            <td colspan="7" style="text-align:center; padding:2rem; color:#6b7280;">Cargando horarios...</td>
+                        </tr>
+                    </tbody>
+                </table>
+            </div>
+
         </div>
     </main>
 
-    <!-- MODAL DE AUTENTICACIÓN -->
-    <div id="modal-auth" class="fixed inset-0 bg-slate-950/80 backdrop-blur-sm z-[2000] flex items-center justify-center p-4 hidden">
-        <div class="w-full max-w-sm bg-slate-900 border border-slate-800 rounded-2xl p-6 shadow-2xl relative">
-            <button onclick="cerrarModalAuth()" class="absolute top-4 right-4 text-slate-400 hover:text-white">✕</button>
-
-            <!-- INICIO DE SESIÓN -->
-            <form id="form-login" class="space-y-4" onsubmit="procesarLogin(event)">
-                <h2 class="text-xl font-bold text-white text-center">Iniciar Sesión</h2>
-                <div>
-                    <label class="block text-xs text-slate-300 mb-1">Correo Electrónico</label>
-                    <input type="email" id="login-email" required placeholder="correo@ejemplo.com"
-                           class="w-full bg-slate-800 border border-slate-700 rounded-lg px-3 py-2 text-sm text-white focus:outline-none focus:border-blue-500">
+    <!-- VENTANA MODAL: INICIO DE SESIÓN -->
+    <div id="modal-login" class="modal-fondo">
+        <div class="modal-caja">
+            <button class="btn-cerrar" onclick="cerrarModal('modal-login')">&times;</button>
+            <h2>Iniciar Sesión</h2>
+            <form onsubmit="ejecutarLogin(event)">
+                <div class="grupo-form">
+                    <label>Correo Electrónico</label>
+                    <input type="email" id="log-email" required placeholder="correo@ejemplo.com">
                 </div>
-                <div>
-                    <label class="block text-xs text-slate-300 mb-1">Contraseña</label>
-                    <input type="password" id="login-password" required placeholder="••••••••"
-                           class="w-full bg-slate-800 border border-slate-700 rounded-lg px-3 py-2 text-sm text-white focus:outline-none focus:border-blue-500">
+                <div class="grupo-form">
+                    <label>Contraseña</label>
+                    <input type="password" id="log-password" required placeholder="••••••••">
                 </div>
-                <button type="submit" class="w-full bg-blue-600 hover:bg-blue-500 text-white font-semibold py-2 rounded-lg text-sm transition">
-                    Ingresar
-                </button>
-                <p class="text-center text-xs text-slate-400">
-                    ¿Sin cuenta? <button type="button" onclick="alternarAuth('registro')" class="text-blue-400 hover:underline">Regístrate</button>
-                </p>
+                <button type="submit" class="btn btn-blue btn-largo">Ingresar</button>
             </form>
-
-            <!-- REGISTRO -->
-            <form id="form-registro" class="space-y-4 hidden" onsubmit="procesarRegistro(event)">
-                <h2 class="text-xl font-bold text-white text-center">Crear Cuenta</h2>
-                <div>
-                    <label class="block text-xs text-slate-300 mb-1">Nombre Completo / Empresa</label>
-                    <input type="text" id="reg-nombre" required placeholder="Ej: Juan Pérez"
-                           class="w-full bg-slate-800 border border-slate-700 rounded-lg px-3 py-2 text-sm text-white focus:outline-none focus:border-blue-500">
-                </div>
-                <div>
-                    <label class="block text-xs text-slate-300 mb-1">Correo Electrónico</label>
-                    <input type="email" id="reg-email" required placeholder="correo@ejemplo.com"
-                           class="w-full bg-slate-800 border border-slate-700 rounded-lg px-3 py-2 text-sm text-white focus:outline-none focus:border-blue-500">
-                </div>
-                <div>
-                    <label class="block text-xs text-slate-300 mb-1">Tipo de Cuenta</label>
-                    <select id="reg-rol" class="w-full bg-slate-800 border border-slate-700 rounded-lg px-3 py-2 text-sm text-white focus:outline-none focus:border-blue-500">
-                        <option value="pasajero">Pasajero / Usuario Normal</option>
-                        <option value="empresa">Empresa de Transportes</option>
-                    </select>
-                </div>
-                <div>
-                    <label class="block text-xs text-slate-300 mb-1">Contraseña</label>
-                    <input type="password" id="reg-password" required placeholder="••••••••"
-                           class="w-full bg-slate-800 border border-slate-700 rounded-lg px-3 py-2 text-sm text-white focus:outline-none focus:border-blue-500">
-                </div>
-                <button type="submit" class="w-full bg-emerald-600 hover:bg-emerald-500 text-white font-semibold py-2 rounded-lg text-sm transition">
-                    Guardar Registro
-                </button>
-                <p class="text-center text-xs text-slate-400">
-                    ¿Ya tienes cuenta? <button type="button" onclick="alternarAuth('login')" class="text-blue-400 hover:underline">Inicia Sesión</button>
-                </p>
-            </form>
+            <div class="modal-enlace">
+                ¿No tienes cuenta? <button type="button" onclick="cerrarModal('modal-login'); abrirModal('modal-registro')">Regístrate aquí</button>
+            </div>
         </div>
     </div>
 
+    <!-- VENTANA MODAL: REGISTRO -->
+    <div id="modal-registro" class="modal-fondo">
+        <div class="modal-caja">
+            <button class="btn-cerrar" onclick="cerrarModal('modal-registro')">&times;</button>
+            <h2>Crear Cuenta</h2>
+            <form onsubmit="ejecutarRegistro(event)">
+                <div class="grupo-form">
+                    <label>Nombre Completo</label>
+                    <input type="text" id="reg-nombre" required placeholder="Tu nombre">
+                </div>
+                <div class="grupo-form">
+                    <label>Correo Electrónico</label>
+                    <input type="email" id="reg-email" required placeholder="correo@ejemplo.com">
+                </div>
+                <div class="grupo-form">
+                    <label>Contraseña</label>
+                    <input type="password" id="reg-password" required placeholder="••••••••">
+                </div>
+                <button type="submit" class="btn btn-green btn-largo">Registrarse</button>
+            </form>
+            <div class="modal-enlace">
+                ¿Ya tienes cuenta? <button type="button" onclick="cerrarModal('modal-registro'); abrirModal('modal-login')">Inicia sesión</button>
+            </div>
+        </div>
+    </div>
+
+    <!-- SCRIPTS DE FUNCIONAMIENTO -->
     <script>
-        const COORDENADAS = {
-            "panguipulli": [-39.6430, -72.3312],
-            "coñaripe":    [-39.5532, -71.9790],
-            "los lagos":   [-39.8511, -72.8228],
-            "villarrica":  [-39.2822, -72.2272],
-            "liquiñe":     [-39.7360, -71.8540],
-            "puerto fuy":  [-39.8660, -71.8885],
-            "valdivia":    [-39.8142, -73.2459],
-            "temuco":      [-38.7399, -72.5901]
-        };
+        let pestanaActual = 'salidas';
 
-        const PALETA_SALIDAS = ["#3b82f6", "#06b6d4", "#10b981", "#6366f1", "#8b5cf6"];
-        const PALETA_LLEGADAS = ["#f59e0b", "#ec4899", "#f97316", "#ef4444", "#eab308"];
+        // Al cargar la página
+        document.addEventListener('DOMContentLoaded', () => {
+            comprobarSesion();
+            cargarDatos();
+        });
 
-        const map = L.map('map').setView(COORDENADAS["panguipulli"], 10);
-        
-        // --- AQUÍ ESTÁ EL MAPA NUEVO SIN MARCA DE AGUA (ESRI DARK GRAY) ---
-        L.tileLayer('https://server.arcgisonline.com/ArcGIS/rest/services/Canvas/World_Dark_Gray_Base/MapServer/tile/{z}/{y}/{x}', { 
-            maxZoom: 16,
-            attribution: 'Tiles © Esri'
-        }).addTo(map);
-        // ------------------------------------------------------------------
-
-        let currentTab = 'salidas';
-        let datosHorarios = [];
-        let capasRutas = {};
-        let itemSeleccionadoIndex = null;
-        let mostrantoMapaMovil = false;
-
-        let usuarioSesion = JSON.parse(localStorage.getItem('usuarioSesion'));
-
-        function actualizarInterfazSesion() {
-            const btn = document.getElementById('btn-cuenta-header');
-            const info = document.getElementById('info-usuario-head');
-
-            if (!usuarioSesion) {
-                info.innerText = "Modo Pasajero (Invitado)";
-                btn.innerText = "🔑 Ingresar";
-                btn.onclick = abrirModalAuth;
-            } else {
-                info.innerText = `👤 Hola, ${usuarioSesion.nombre}`;
-                btn.innerText = "👤 Mi Perfil";
-                btn.onclick = () => { window.location.href = '/usuario'; };
+        // 1. GESTIÓN DE SESIÓN
+        function comprobarSesion() {
+            const usuarioGuardado = localStorage.getItem('usuario_bsred');
+            if (usuarioGuardado) {
+                const usuario = JSON.parse(usuarioGuardado);
+                const cajaNav = document.getElementById('caja-botones-nav');
+                cajaNav.innerHTML = `
+                    <a href="/usuario" class="btn btn-blue">Mi Perfil (${usuario.nombre})</a>
+                    <button onclick="cerrarSesion()" class="btn btn-red">Salir</button>
+                `;
             }
         }
-        
-        actualizarInterfazSesion();
 
-        function abrirModalAuth() { document.getElementById('modal-auth').classList.remove('hidden'); }
-        function cerrarModalAuth() { document.getElementById('modal-auth').classList.add('hidden'); }
-        
-        function alternarAuth(vista) {
-            document.getElementById('form-login').classList.toggle('hidden', vista !== 'login');
-            document.getElementById('form-registro').classList.toggle('hidden', vista !== 'registro');
+        function cerrarSesion() {
+            localStorage.removeItem('usuario_bsred');
+            window.location.reload();
         }
 
-        function procesarLogin(e) {
-            e.preventDefault();
-            const email = document.getElementById('login-email').value;
-            const pass = document.getElementById('login-password').value;
-
-            if (email === "bsredpanguipulli@gmail.com" && pass === "csgo775599") {
-                usuarioSesion = { rol: "admin", nombre: "Admin General", email };
-            } else if (email.includes("empresa")) {
-                usuarioSesion = { rol: "empresa", nombre: "Empresa Transportes", email };
-            } else {
-                usuarioSesion = { rol: "pasajero", nombre: "Pasajero", email };
-            }
-
-            localStorage.setItem('usuarioSesion', JSON.stringify(usuarioSesion));
-            window.location.href = '/usuario'; 
+        // 2. CONTROL DE VENTANAS MODALES
+        function abrirModal(id) {
+            document.getElementById(id).classList.add('mostrar');
         }
 
-        async function procesarRegistro(e) {
-            e.preventDefault();
-            const payload = {
-                nombre: document.getElementById('reg-nombre').value,
-                email: document.getElementById('reg-email').value,
-                password: document.getElementById('reg-password').value,
-                rol: document.getElementById('reg-rol').value
-            };
+        function cerrarModal(id) {
+            document.getElementById(id).classList.remove('mostrar');
+        }
+
+        // 3. OBTENER Y MOSTRAR HORARIOS
+        function cambiarPestana(tipo) {
+            pestanaActual = tipo;
+            document.getElementById('btn-salidas').classList.remove('activo');
+            document.getElementById('btn-llegadas').classList.remove('activo');
+            
+            if(tipo === 'salidas') document.getElementById('btn-salidas').classList.add('activo');
+            if(tipo === 'llegadas') document.getElementById('btn-llegadas').classList.add('activo');
+            
+            cargarDatos();
+        }
+
+        async function cargarDatos() {
+            const textoBuscado = document.getElementById('input-busqueda').value;
+            const tabla = document.getElementById('cuerpo-tabla');
 
             try {
-                const res = await fetch('/api/registro', {
+                const url = `/api/horarios?tab=${pestanaActual}&q=${encodeURIComponent(textoBuscado)}`;
+                const respuesta = await fetch(url);
+                const horarios = await respuesta.json();
+
+                if (!horarios || horarios.length === 0) {
+                    tabla.innerHTML = `<tr><td colspan="7" style="text-align:center; padding:2rem;">No hay viajes disponibles.</td></tr>`;
+                    return;
+                }
+
+                tabla.innerHTML = horarios.map(h => `
+                    <tr>
+                        <td class="col-hora">${h.salida || '--:--'}</td>
+                        <td>${h.origen}</td>
+                        <td><strong>${h.destino}</strong></td>
+                        <td>${h.empresa}</td>
+                        <td><span class="etiqueta-anden">${h.anden}</span></td>
+                        <td><strong>$${Number(h.precio || 0).toLocaleString('es-CL')}</strong></td>
+                        <td>${generarEtiquetaEstado(h.estado)}</td>
+                    </tr>
+                `).join('');
+                
+            } catch (error) {
+                tabla.innerHTML = `<tr><td colspan="7" style="text-align:center; color:red; padding:2rem;">Error conectando con el servidor.</td></tr>`;
+            }
+        }
+
+        function generarEtiquetaEstado(estado) {
+            const e = (estado || '').toLowerCase();
+            if (e.includes('retras')) return `<span class="etiqueta-estado estado-retrasado">Retrasado</span>`;
+            if (e.includes('ruta')) return `<span class="etiqueta-estado estado-enruta">En ruta</span>`;
+            return `<span class="etiqueta-estado estado-atiempo">A tiempo</span>`;
+        }
+
+        // 4. FUNCIONES DE LOGIN Y REGISTRO
+        async function ejecutarLogin(evento) {
+            evento.preventDefault();
+            const email = document.getElementById('log-email').value.trim();
+            const password = document.getElementById('log-password').value.trim();
+
+            try {
+                const respuesta = await fetch('/api/login', {
                     method: 'POST',
                     headers: { 'Content-Type': 'application/json' },
-                    body: JSON.stringify(payload)
+                    body: JSON.stringify({ email, password })
+                });
+                
+                const datos = await respuesta.json();
+
+                if (respuesta.ok && datos.success) {
+                    localStorage.setItem('usuario_bsred', JSON.stringify(datos.user));
+                    window.location.href = '/usuario'; // Redirigir al perfil
+                } else {
+                    alert(datos.message || 'Usuario no registrado o clave incorrecta.');
+                }
+            } catch (error) {
+                alert('Fallo de conexión al intentar iniciar sesión.');
+            }
+        }
+
+        async function ejecutarRegistro(evento) {
+            evento.preventDefault();
+            const nombre = document.getElementById('reg-nombre').value.trim();
+            const email = document.getElementById('reg-email').value.trim();
+            const password = document.getElementById('reg-password').value.trim();
+
+            try {
+                const respuesta = await fetch('/api/register', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ nombre, email, password, rol: 'pasajero' })
                 });
 
-                if (res.ok) {
-                    alert('¡Cuenta creada exitosamente!');
-                    usuarioSesion = { rol: payload.rol, nombre: payload.nombre, email: payload.email };
-                    localStorage.setItem('usuarioSesion', JSON.stringify(usuarioSesion));
-                    window.location.href = '/usuario';
+                const datos = await respuesta.json();
+
+                if (respuesta.ok && datos.success) {
+                    alert(datos.message || '¡Cuenta creada! Ahora puedes iniciar sesión.');
+                    cerrarModal('modal-registro');
+                    abrirModal('modal-login');
                 } else {
-                    alert('Error al crear usuario (quizás el correo ya existe).');
+                    alert(datos.message || 'No se pudo crear la cuenta.');
                 }
-            } catch (err) {
-                alert('Ocurrió un error de conexión.');
+            } catch (error) {
+                alert('Fallo de conexión al intentar registrarse.');
             }
         }
-
-        function toggleVistaMovil() {
-            mostrantoMapaMovil = !mostrantoMapaMovil;
-            const panel = document.getElementById('panel-lateral');
-            const icono = document.getElementById('btn-movil-icono');
-            const txt = document.getElementById('btn-movil-txt');
-
-            if (mostrantoMapaMovil) {
-                panel.style.transform = 'translateX(-100%)';
-                icono.innerText = '📋';
-                txt.innerText = 'Ver Panel';
-                setTimeout(() => { map.invalidateSize(); }, 300);
-            } else {
-                panel.style.transform = 'translateX(0)';
-                icono.innerText = '🗺️';
-                txt.innerText = 'Ver Mapa';
-            }
-        }
-
-        function onBusquedaChange() {
-            cargarDatosAPI();
-        }
-
-        async function cargarDatosAPI() {
-            document.getElementById("estado-mapa").innerText = "Obteniendo horarios...";
-            const query = document.getElementById('busqueda').value;
-            
-            try {
-                const res = await fetch(`/api/horarios?tab=${currentTab}&q=${encodeURIComponent(query)}`);
-                datosHorarios = await res.json();
-                renderizarLista();
-                actualizarMapa();
-            } catch (err) {
-                document.getElementById("estado-mapa").innerText = "Error de conexión";
-            }
-        }
-
-        function cambiarTab(tab) {
-            if (currentTab === tab) return;
-            currentTab = tab;
-            itemSeleccionadoIndex = null;
-            document.getElementById('tab-salidas').className = tab === 'salidas' ? 'flex-1 py-1.5 rounded-md bg-blue-600 text-white font-bold' : 'flex-1 py-1.5 text-slate-400';
-            document.getElementById('tab-llegadas').className = tab === 'llegadas' ? 'flex-1 py-1.5 rounded-md bg-amber-600 text-white font-bold' : 'flex-1 py-1.5 text-slate-400';
-            document.getElementById('txt-tab-actual').innerText = tab === 'salidas' ? "Salidas" : "Llegadas";
-            cargarDatosAPI();
-        }
-
-        function renderizarLista() {
-            const contenedor = document.getElementById("lista-horarios");
-            contenedor.innerHTML = "";
-            const paleta = currentTab === 'salidas' ? PALETA_SALIDAS : PALETA_LLEGADAS;
-
-            if (datosHorarios.length === 0) {
-                contenedor.innerHTML = `<div class="text-center text-slate-500 py-10 text-sm">No se encontraron recorridos.</div>`;
-                return;
-            }
-
-            datosHorarios.forEach((item, index) => {
-                const color = paleta[index % paleta.length];
-                contenedor.innerHTML += `
-                <div onclick="seleccionarHorario(${index})"
-                     class="p-4 rounded-xl border transition cursor-pointer flex justify-between items-center ${
-                         itemSeleccionadoIndex === index ? 'bg-slate-800 border-blue-500 ring-2 ring-blue-500/30' : 'bg-slate-800/60 border-slate-700/60 hover:border-slate-500'
-                     }">
-                    <div class="space-y-1">
-                        <div class="flex items-center gap-2">
-                            <span class="w-3 h-3 rounded-full" style="background-color: ${color}"></span>
-                            <h3 class="font-bold text-white text-sm">${item.empresa}</h3>
-                            <span class="text-[10px] px-2 py-0.5 rounded-full bg-slate-700 text-slate-300">Andén ${item.anden}</span>
-                        </div>
-                        <p class="text-xs text-slate-300">${item.origen} ➔ <span class="font-bold text-white">${item.destino}</span></p>
-                    </div>
-                    <div class="text-right pl-2">
-                        <span class="text-xs text-slate-400 block">${currentTab === 'salidas' ? 'Salida' : 'Llegada'}</span>
-                        <span class="text-xl font-black text-white font-mono">${item.salida}</span>
-                    </div>
-                </div>`;
-            });
-        }
-
-        function actualizarMapa() {
-            Object.keys(capasRutas).forEach(k => {
-                map.removeLayer(capasRutas[k].polyline);
-            });
-            capasRutas = {};
-
-            const paleta = currentTab === 'salidas' ? PALETA_SALIDAS : PALETA_LLEGADAS;
-            let coordsTotales = [];
-
-            datosHorarios.forEach((item, index) => {
-                const origenGPS = COORDENADAS[(item.origen || "").toLowerCase()] || COORDENADAS["panguipulli"];
-                const destinoGPS = COORDENADAS[(item.destino || "").toLowerCase()] || COORDENADAS["panguipulli"];
-                
-                const ruta = [origenGPS, destinoGPS];
-                coordsTotales.push(...ruta);
-                const color = paleta[index % paleta.length];
-
-                const polyline = L.polyline(ruta, { color, weight: itemSeleccionadoIndex === index ? 6 : 3 }).addTo(map);
-                capasRutas[index] = { polyline };
-            });
-
-            if (coordsTotales.length > 0) {
-                map.fitBounds(L.latLngBounds(coordsTotales), { padding: [40, 40] });
-            } else {
-                map.setView(COORDENADAS["panguipulli"], 10);
-            }
-            
-            document.getElementById("estado-mapa").innerText = `${datosHorarios.length} rutas cargadas`;
-        }
-
-        function seleccionarHorario(index) {
-            itemSeleccionadoIndex = itemSeleccionadoIndex === index ? null : index;
-            renderizarLista();
-            actualizarMapa();
-        }
-
-        cargarDatosAPI();
     </script>
 </body>
 </html>
