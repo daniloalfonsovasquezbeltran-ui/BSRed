@@ -1,41 +1,47 @@
-// Service Worker simple: cache-first para shell y network-first para API
-const CACHE = 'bsred-v1';
+// Service Worker: network-first para HTML y APIs, cache-first para estáticos
+const CACHE = 'bsred-v2';
 const ASSETS = [
-  '/', '/index.html', '/logo.jpg',
+  '/', 
+  '/logo.jpg',
   'https://cdn.tailwindcss.com'
 ];
 
-self.addEventListener('install', e=>{
-  e.waitUntil(caches.open(CACHE).then(c=>c.addAll(ASSETS)));
+self.addEventListener('install', e => {
+  e.waitUntil(caches.open(CACHE).then(c => c.addAll(ASSETS)));
   self.skipWaiting();
 });
 
-self.addEventListener('activate', e=>{
+self.addEventListener('activate', e => {
   e.waitUntil(
-    caches.keys().then(keys=>Promise.all(
-      keys.filter(k=>k!==CACHE).map(k=>caches.delete(k))
+    caches.keys().then(keys => Promise.all(
+      keys.filter(k => k !== CACHE).map(k => caches.delete(k))
     ))
   );
   self.clients.claim();
 });
 
-self.addEventListener('fetch', e=>{
+self.addEventListener('fetch', e => {
   const url = new URL(e.request.url);
 
-  // API: network-first con fallback a cache
-  if (url.pathname.includes('/api/horarios')) {
+  // 1. IGNORAR PETICIONES POST (Login, Registro, GPS)
+  if (e.request.method === 'POST') {
+    return; 
+  }
+
+  // 2. PÁGINAS HTML y API: Network-first (Busca en internet primero siempre)
+  if (url.pathname.includes('/api/') || url.pathname.includes('.html') || url.pathname === '/usuario' || url.pathname === '/') {
     e.respondWith(
-      fetch(e.request).then(res=>{
+      fetch(e.request).then(res => {
         const copy = res.clone();
-        caches.open(CACHE).then(c=>c.put(e.request, copy));
+        caches.open(CACHE).then(c => c.put(e.request, copy));
         return res;
-      }).catch(()=> caches.match(e.request))
+      }).catch(() => caches.match(e.request))
     );
     return;
   }
 
-  // Estáticos: cache-first
+  // 3. ESTÁTICOS (Imágenes, Tailwind): Cache-first
   e.respondWith(
-    caches.match(e.request).then(res=> res || fetch(e.request))
+    caches.match(e.request).then(res => res || fetch(e.request))
   );
 });
