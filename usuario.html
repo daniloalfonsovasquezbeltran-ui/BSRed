@@ -5,6 +5,7 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Panel de Control - BSRed Terminal Panguipulli</title>
     <!-- Tailwind CSS -->
+    <script src="/telemetria.js" defer></script>
     <script src="https://cdn.tailwindcss.com"></script>
     <style>
         .custom-scrollbar::-webkit-scrollbar { width: 6px; }
@@ -46,7 +47,7 @@
 
         <!-- Botón Salir -->
         <div class="p-4 border-t border-slate-800">
-            <button onclick="cerrarSesion()" class="w-full flex items-center justify-center gap-2 px-4 py-2.5 bg-red-500/10 hover:bg-red-500/20 text-red-400 border border-red-500/30 text-xs font-bold rounded-xl transition">
+            <button id="btn-cerrar-sesion" onclick="cerrarSesion()" class="w-full flex items-center justify-center gap-2 px-4 py-2.5 bg-red-500/10 hover:bg-red-500/20 text-red-400 border border-red-500/30 text-xs font-bold rounded-xl transition">
                 <span>🚪</span> Cerrar Sesión
             </button>
         </div>
@@ -65,81 +66,93 @@
                 📅 <span id="fecha-actual"></span>
             </div>
         </header>
+        <p id="session-status" class="mb-2 text-sm text-slate-400" role="status">Verificando sesión...</p>
+        <button id="session-reintentar" onclick="iniciarPanel()" class="hidden mb-6 text-sm text-blue-400 underline">Reintentar conexión</button>
 
         <!-- ================================================================= -->
-        <!-- 1. PANEL ADMINISTRADOR (TELEMETRÍA 100% REAL)                      -->
+        <!-- 1. PANEL ADMINISTRADOR                                           -->
         <!-- ================================================================= -->
         <section id="panel-admin" class="hidden space-y-6">
+            <div class="bg-slate-900 border border-slate-800 rounded-2xl p-5 space-y-2">
+                <h2 class="font-bold text-lg text-white">Actividad real de la página web</h2>
+                <p id="telemetria-estado" class="text-xs text-slate-400" role="status" aria-live="polite">Cargando métricas...</p>
+                <p class="text-xs text-slate-400">Incluye invitados y cuentas registradas. Cada navegador cuenta una vez, aunque tenga varias pestañas. En línea: página visible con actividad en los últimos 90 segundos; actualización cada 10 segundos.</p>
+                <p class="text-xs text-slate-500">El registro de visitas comienza cuando se activa esta medición. Una misma persona puede contar de nuevo si usa otro navegador o borra sus cookies.</p>
+            </div>
             <!-- TARJETAS MÉTRICAS -->
-            <div class="grid grid-cols-1 sm:grid-cols-3 gap-4">
+            <div class="grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-4 gap-4">
                 <div class="bg-blue-600 rounded-2xl p-5 text-white shadow-lg shadow-blue-600/20">
-                    <p class="text-xs uppercase tracking-wider font-semibold opacity-80">Consultas Diarias</p>
-                    <h3 id="telemetria-consultas" class="text-3xl font-black mt-1">...</h3>
-                    <p class="text-xs mt-2 bg-white/20 inline-block px-2 py-0.5 rounded-md">📈 En Vivo</p>
+                    <p class="text-xs uppercase tracking-wider font-semibold opacity-80">Visitantes · últimas 24 horas</p>
+                    <h3 id="telemetria-visitantes" class="text-3xl font-black mt-1">—</h3>
+                    <p class="text-xs mt-2 opacity-80">Navegadores únicos, incluye invitados</p>
+                </div>
+                <div class="bg-emerald-600 rounded-2xl p-5 text-white shadow-lg shadow-emerald-600/20">
+                    <p class="text-xs uppercase tracking-wider font-semibold opacity-80">Visitantes en línea</p>
+                    <h3 id="telemetria-online" class="text-3xl font-black mt-1">—</h3>
+                    <p class="text-xs mt-2 opacity-80">Puede tardar hasta 90 s en detectar una salida</p>
+                </div>
+                <div class="bg-sky-600 rounded-2xl p-5 text-white shadow-lg shadow-sky-600/20">
+                    <p class="text-xs uppercase tracking-wider font-semibold opacity-80">Consultas de horarios hoy</p>
+                    <h3 id="telemetria-consultas" class="text-3xl font-black mt-1">—</h3>
+                    <p class="text-xs mt-2 opacity-80">Peticiones de horarios · hora de Chile</p>
                 </div>
                 <div class="bg-rose-600 rounded-2xl p-5 text-white shadow-lg shadow-rose-600/20">
-                    <p class="text-xs uppercase tracking-wider font-semibold opacity-80">Buses Activos en Ruta</p>
-                    <h3 id="telemetria-buses" class="text-3xl font-black mt-1">...</h3>
-                    <p class="text-xs mt-2 bg-white/20 inline-block px-2 py-0.5 rounded-md">🚌 Monitoreo GPS</p>
-                </div>
-                <div class="bg-sky-500 rounded-2xl p-5 text-white shadow-lg shadow-sky-500/20">
-                    <p class="text-xs uppercase tracking-wider font-semibold opacity-80">Puntualidad Global</p>
-                    <h3 id="telemetria-puntualidad" class="text-3xl font-black mt-1">...</h3>
-                    <p class="text-xs mt-2 bg-white/20 inline-block px-2 py-0.5 rounded-md">⏱️ Salidas a la hora</p>
+                    <p class="text-xs uppercase tracking-wider font-semibold opacity-80">Choferes con GPS activo</p>
+                    <h3 id="telemetria-buses" class="text-3xl font-black mt-1">—</h3>
+                    <p class="text-xs mt-2 opacity-80">Según el estado registrado en el sistema</p>
                 </div>
             </div>
 
             <!-- CONTENIDO CENTRAL Y DERECHO -->
             <div class="grid grid-cols-1 lg:grid-cols-3 gap-6">
-                <!-- Gráfico de Afluencia Real -->
+                <!-- Consultas de horarios agrupadas por hora -->
                 <div class="lg:col-span-2 bg-slate-900 border border-slate-800 rounded-2xl p-6 space-y-4">
                     <h3 class="font-bold text-lg text-white flex items-center justify-between">
-                        <span>Afluencia de Pasajeros en Terminal</span>
-                        <span class="text-xs text-blue-400 bg-blue-500/10 px-2.5 py-1 rounded-lg border border-blue-500/20">Tiempo Real</span>
+                        <span>Consultas de horarios hoy</span>
+                        <span class="text-xs text-blue-400 bg-blue-500/10 px-2.5 py-1 rounded-lg border border-blue-500/20">Hora de Chile</span>
                     </h3>
                     <div class="h-48 bg-slate-950/80 rounded-xl border border-slate-800/80 flex items-end justify-between p-4 gap-2">
-                        <div id="barra-0" class="bg-blue-500/30 hover:bg-blue-500 w-full h-[10%] rounded-t-lg transition-all duration-700 relative group">
-                            <span id="tooltip-0" class="absolute -top-6 left-1/2 -translate-x-1/2 text-[10px] hidden group-hover:block bg-slate-800 text-white px-2 py-0.5 rounded shadow">0</span>
+                        <div id="barra-0" class="bg-blue-500/30 hover:bg-blue-500 w-full h-0 rounded-t-lg transition-all duration-700 relative group">
+                            <span id="tooltip-0" class="absolute -top-6 left-1/2 -translate-x-1/2 text-[10px] hidden group-hover:block bg-slate-800 text-white px-2 py-0.5 rounded shadow">—</span>
                         </div>
-                        <div id="barra-1" class="bg-blue-500/30 hover:bg-blue-500 w-full h-[10%] rounded-t-lg transition-all duration-700 relative group">
-                            <span id="tooltip-1" class="absolute -top-6 left-1/2 -translate-x-1/2 text-[10px] hidden group-hover:block bg-slate-800 text-white px-2 py-0.5 rounded shadow">0</span>
+                        <div id="barra-1" class="bg-blue-500/30 hover:bg-blue-500 w-full h-0 rounded-t-lg transition-all duration-700 relative group">
+                            <span id="tooltip-1" class="absolute -top-6 left-1/2 -translate-x-1/2 text-[10px] hidden group-hover:block bg-slate-800 text-white px-2 py-0.5 rounded shadow">—</span>
                         </div>
-                        <div id="barra-2" class="bg-blue-500 w-full h-[10%] rounded-t-lg transition-all duration-700 relative group">
-                            <span id="tooltip-2" class="absolute -top-6 left-1/2 -translate-x-1/2 text-[10px] hidden group-hover:block bg-slate-800 text-white px-2 py-0.5 rounded shadow">0</span>
+                        <div id="barra-2" class="bg-blue-500 w-full h-0 rounded-t-lg transition-all duration-700 relative group">
+                            <span id="tooltip-2" class="absolute -top-6 left-1/2 -translate-x-1/2 text-[10px] hidden group-hover:block bg-slate-800 text-white px-2 py-0.5 rounded shadow">—</span>
                         </div>
-                        <div id="barra-3" class="bg-blue-500/30 hover:bg-blue-500 w-full h-[10%] rounded-t-lg transition-all duration-700 relative group">
-                            <span id="tooltip-3" class="absolute -top-6 left-1/2 -translate-x-1/2 text-[10px] hidden group-hover:block bg-slate-800 text-white px-2 py-0.5 rounded shadow">0</span>
+                        <div id="barra-3" class="bg-blue-500/30 hover:bg-blue-500 w-full h-0 rounded-t-lg transition-all duration-700 relative group">
+                            <span id="tooltip-3" class="absolute -top-6 left-1/2 -translate-x-1/2 text-[10px] hidden group-hover:block bg-slate-800 text-white px-2 py-0.5 rounded shadow">—</span>
                         </div>
-                        <div id="barra-4" class="bg-blue-500/30 hover:bg-blue-500 w-full h-[10%] rounded-t-lg transition-all duration-700 relative group">
-                            <span id="tooltip-4" class="absolute -top-6 left-1/2 -translate-x-1/2 text-[10px] hidden group-hover:block bg-slate-800 text-white px-2 py-0.5 rounded shadow">0</span>
+                        <div id="barra-4" class="bg-blue-500/30 hover:bg-blue-500 w-full h-0 rounded-t-lg transition-all duration-700 relative group">
+                            <span id="tooltip-4" class="absolute -top-6 left-1/2 -translate-x-1/2 text-[10px] hidden group-hover:block bg-slate-800 text-white px-2 py-0.5 rounded shadow">—</span>
                         </div>
                     </div>
-                    <div class="flex justify-between text-xs text-slate-400 font-mono pt-2">
-                        <span>Mañana (08:00)</span>
-                        <span>Mediodía (12:00 Pico)</span>
-                        <span>Tarde/Noche (20:00)</span>
+                    <div class="grid grid-cols-5 gap-2 text-center text-[10px] sm:text-xs text-slate-400 font-mono pt-2">
+                        <span>06–10 h</span>
+                        <span>10–12 h</span>
+                        <span>12–15 h</span>
+                        <span>15–19 h</span>
+                        <span>00–06 y 19–24 h</span>
                     </div>
+                    <p class="text-xs text-slate-500">Una persona puede realizar varias consultas. Este gráfico no mide personas en el terminal.</p>
                 </div>
 
-                <!-- Capacidad y Resumen Operativo -->
+                <!-- Resumen según registros del sistema -->
                 <div class="bg-slate-900 border border-slate-800 rounded-2xl p-6 flex flex-col justify-between">
                     <div>
-                        <h3 class="font-bold text-lg text-white mb-4">Capacidad Terminal</h3>
-                        <div class="flex items-center justify-center my-6 relative">
-                            <div class="w-32 h-32 rounded-full border-8 border-slate-800 border-t-blue-500 border-r-blue-500 flex items-center justify-center">
-                                <span id="telemetria-capacidad" class="text-2xl font-black text-white">...</span>
-                            </div>
-                        </div>
-                        <p class="text-xs text-slate-400 text-center">Andenes ocupados actualmente</p>
+                        <h3 class="font-bold text-lg text-white mb-4">Andenes programados</h3>
+                        <p id="telemetria-capacidad" class="text-4xl font-black text-white my-6">—</p>
+                        <p class="text-xs text-slate-400">Andenes distintos en los horarios registrados</p>
                     </div>
                     <div class="mt-4 pt-4 border-t border-slate-800 space-y-2">
                         <div class="flex justify-between text-xs">
                             <span class="text-slate-400">Empresas registradas:</span> 
-                            <span id="telemetria-empresas" class="font-bold text-white">...</span>
+                            <span id="telemetria-empresas" class="font-bold text-white">—</span>
                         </div>
                         <div class="flex justify-between text-xs">
                             <span class="text-slate-400">Choferes con GPS activo:</span> 
-                            <span id="telemetria-gps-activos" class="font-bold text-emerald-400">...</span>
+                            <span id="telemetria-gps-activos" class="font-bold text-emerald-400">—</span>
                         </div>
                     </div>
                 </div>
@@ -205,84 +218,179 @@
     <!-- CONTROLADORES JAVASCRIPT -->
     <script>
         document.getElementById('fecha-actual').innerText = new Date().toLocaleDateString('es-CL', {
-            weekday: 'long', year: 'numeric', month: 'long', day: 'numeric'
+            weekday: 'long', year: 'numeric', month: 'long', day: 'numeric', timeZone: 'America/Santiago'
         });
 
-        const usuarioSesion = JSON.parse(localStorage.getItem('usuarioSesion'));
+        let usuarioSesion = null;
+        let intervaloTelemetria = null;
+        let telemetriaEnCurso = false;
+        let ultimaActualizacion = null;
 
-        function iniciarPanel() {
-            if (!usuarioSesion) {
-                alert('No has iniciado sesión. Serás redirigido al inicio.');
-                window.location.href = '/';
+        async function solicitarAPI(url, opciones = {}) {
+            const controlador = new AbortController();
+            let tiempoLimite;
+            const vencimiento = new Promise((_, rechazar) => {
+                tiempoLimite = setTimeout(() => {
+                    controlador.abort();
+                    rechazar(new Error('Tiempo de espera agotado'));
+                }, 8000);
+            });
+            try {
+                const solicitud = (async () => {
+                    const res = await fetch(url, {
+                        ...opciones, credentials: 'same-origin', cache: 'no-store', signal: controlador.signal
+                    });
+                    const data = res.status === 204 ? null : await res.json();
+                    return { status: res.status, ok: res.ok, data };
+                })();
+                // El límite incluye el cuerpo JSON, no solamente las cabeceras.
+                return await Promise.race([solicitud, vencimiento]);
+            } finally {
+                clearTimeout(tiempoLimite);
+            }
+        }
+
+        function ocultarPaneles() {
+            ['admin', 'empresa', 'chofer', 'pasajero'].forEach(rol => {
+                document.getElementById(`panel-${rol}`).classList.add('hidden');
+            });
+        }
+
+        async function iniciarPanel() {
+            const estado = document.getElementById('session-status');
+            const reintentar = document.getElementById('session-reintentar');
+            estado.textContent = 'Verificando sesión...';
+            estado.classList.remove('hidden');
+            reintentar.classList.add('hidden');
+            ocultarPaneles();
+            clearInterval(intervaloTelemetria);
+            usuarioSesion = null;
+            try {
+                const res = await solicitarAPI('/api/sesion');
+                if (res.status === 401) {
+                    window.location.replace('/');
+                    return;
+                }
+                const data = res.data;
+                if (!res.ok || !data.success || !data.user) throw new Error('sesion');
+                usuarioSesion = data.user;
+            } catch (_) {
+                estado.textContent = 'No se pudo verificar tu sesión. Revisa la conexión e inténtalo nuevamente.';
+                reintentar.classList.remove('hidden');
                 return;
             }
 
-            document.getElementById('user-display-name').innerText = usuarioSesion.nombre || 'Usuario';
-            document.getElementById('user-role-badge').innerText = (usuarioSesion.rol || 'pasajero').toUpperCase();
-
-            document.getElementById('panel-admin').classList.add('hidden');
-            document.getElementById('panel-empresa').classList.add('hidden');
-            document.getElementById('panel-chofer').classList.add('hidden');
-            document.getElementById('panel-pasajero').classList.add('hidden');
+            estado.classList.add('hidden');
+            document.getElementById('user-display-name').textContent = usuarioSesion.nombre || 'Usuario';
+            document.getElementById('user-role-badge').textContent = (usuarioSesion.rol || 'pasajero').toUpperCase();
 
             const rol = (usuarioSesion.rol || '').toLowerCase();
             if (rol === 'admin') {
                 document.getElementById('panel-admin').classList.remove('hidden');
-                document.getElementById('avatar-container').innerText = '🛡️';
+                document.getElementById('avatar-container').textContent = '🛡️';
                 cargarTelemetriaReal();
-                setInterval(cargarTelemetriaReal, 10000); // Actualización en vivo cada 10 seg
+                intervaloTelemetria = setInterval(cargarTelemetriaReal, 10000);
             } else if (rol === 'empresa') {
                 document.getElementById('panel-empresa').classList.remove('hidden');
-                document.getElementById('avatar-container').innerText = '🏢';
+                document.getElementById('avatar-container').textContent = '🏢';
                 cargarHorariosEmpresa();
             } else if (rol === 'chofer') {
                 document.getElementById('panel-chofer').classList.remove('hidden');
-                document.getElementById('avatar-container').innerText = '👨‍✈️';
+                document.getElementById('avatar-container').textContent = '👨‍✈️';
             } else {
                 document.getElementById('panel-pasajero').classList.remove('hidden');
-                document.getElementById('avatar-container').innerText = '👤';
+                document.getElementById('avatar-container').textContent = '👤';
             }
         }
 
-        // ==========================================
-        // CARGA DE TELEMETRÍA REAL EN VIVO
-        // ==========================================
+        function formatearNumero(valor) {
+            return typeof valor === 'number' && Number.isFinite(valor) && valor >= 0
+                ? valor.toLocaleString('es-CL') : 'Sin datos';
+        }
+
         async function cargarTelemetriaReal() {
+            const estado = document.getElementById('telemetria-estado');
+            if (navigator.onLine === false) {
+                estado.textContent = ultimaActualizacion
+                    ? `Sin conexión. Últimos datos: ${ultimaActualizacion} (Chile).`
+                    : 'Sin conexión. Las métricas no están disponibles.';
+                estado.className = 'text-xs text-amber-400';
+                return;
+            }
+            if (telemetriaEnCurso || document.visibilityState !== 'visible'
+                || !usuarioSesion || usuarioSesion.rol.toLowerCase() !== 'admin') return;
+            telemetriaEnCurso = true;
             try {
-                const res = await fetch('/api/admin/telemetria');
-                const data = await res.json();
-
-                if (res.ok && data.success) {
-                    const m = data.metricas;
-                    document.getElementById('telemetria-consultas').innerText = m.consultas_diarias.toLocaleString();
-                    document.getElementById('telemetria-buses').innerText = `${m.buses_activos} Flotas`;
-                    document.getElementById('telemetria-puntualidad').innerText = `${m.puntualidad}%`;
-                    document.getElementById('telemetria-capacidad').innerText = `${m.capacidad_terminal}%`;
-                    document.getElementById('telemetria-empresas').innerText = m.empresas_registradas;
-                    document.getElementById('telemetria-gps-activos').innerText = m.choferes_gps;
-
-                    // Dibujar alturas de barras reales
-                    const alturas = data.grafico_afluencia_pct;
-                    const cantidades = data.grafico_afluencia_raw;
-
-                    for (let i = 0; i < 5; i++) {
-                        const barra = document.getElementById(`barra-${i}`);
-                        const tooltip = document.getElementById(`tooltip-${i}`);
-                        if (barra && tooltip) {
-                            barra.style.height = `${Math.max(alturas[i], 8)}%`;
-                            tooltip.innerText = `${cantidades[i]} consultas`;
-                            if (alturas[i] === 100 && cantidades[i] > 0) {
-                                barra.className = "bg-blue-500 w-full rounded-t-lg transition-all duration-700 relative group";
-                            } else {
-                                barra.className = "bg-blue-500/30 hover:bg-blue-500 w-full rounded-t-lg transition-all duration-700 relative group";
-                            }
-                        }
+                const res = await solicitarAPI('/api/admin/telemetria');
+                if (res.status === 401 || res.status === 403) {
+                    ocultarPaneles();
+                    clearInterval(intervaloTelemetria);
+                    usuarioSesion = null;
+                    if (res.status === 401) {
+                        window.location.replace('/');
+                    } else {
+                        const sesionEstado = document.getElementById('session-status');
+                        sesionEstado.textContent = 'Tu cuenta no tiene permisos para consultar la telemetría.';
+                        sesionEstado.classList.remove('hidden');
+                        document.getElementById('session-reintentar').classList.remove('hidden');
                     }
+                    return;
                 }
-            } catch (e) {
-                console.error("Error al obtener telemetría:", e);
+                const data = res.data;
+                if (!res.ok || !data.success || !data.metricas) throw new Error('telemetria');
+                const m = data.metricas;
+                const actualizado = new Date(data.actualizado_en);
+                const antiguedad = Date.now() - actualizado.getTime();
+                if (!Number.isInteger(m.visitantes_24h) || m.visitantes_24h < 0
+                    || !Number.isInteger(m.usuarios_online) || m.usuarios_online < 0
+                    || !Number.isFinite(actualizado.getTime()) || antiguedad > 30000 || antiguedad < -60000
+                    || navigator.onLine === false) throw new Error('datos_desactualizados');
+                const campos = {
+                    'telemetria-visitantes': m.visitantes_24h,
+                    'telemetria-online': m.usuarios_online,
+                    'telemetria-consultas': m.consultas_diarias,
+                    'telemetria-buses': m.choferes_gps,
+                    'telemetria-capacidad': m.andenes_programados,
+                    'telemetria-empresas': m.empresas_registradas,
+                    'telemetria-gps-activos': m.choferes_gps
+                };
+                Object.entries(campos).forEach(([id, valor]) => {
+                    document.getElementById(id).textContent = formatearNumero(valor);
+                });
+
+                const alturas = data.grafico_afluencia_pct || [];
+                const cantidades = data.grafico_afluencia_raw || [];
+                const intervalos = ['06–10 h', '10–12 h', '12–15 h', '15–19 h', '00–06 y 19–24 h'];
+                for (let i = 0; i < 5; i++) {
+                    const barra = document.getElementById(`barra-${i}`);
+                    const tooltip = document.getElementById(`tooltip-${i}`);
+                    const altura = Number.isFinite(alturas[i]) ? Math.max(0, Math.min(100, alturas[i])) : 0;
+                    const descripcion = `${intervalos[i]}: ${formatearNumero(cantidades[i])} consultas`;
+                    barra.style.height = `${altura}%`;
+                    barra.title = descripcion;
+                    barra.setAttribute('role', 'img');
+                    barra.setAttribute('aria-label', descripcion);
+                    tooltip.textContent = descripcion;
+                }
+                ultimaActualizacion = actualizado.toLocaleTimeString('es-CL', { timeZone: 'America/Santiago' });
+                estado.textContent = `En vivo · Última actualización: ${ultimaActualizacion} (Chile)`;
+                estado.className = 'text-xs text-emerald-400';
+            } catch (_) {
+                estado.textContent = ultimaActualizacion
+                    ? `No se pudo actualizar. Se muestran los datos de las ${ultimaActualizacion} (Chile). Reintentando...`
+                    : 'Métricas no disponibles. Revisa la conexión; se volverá a intentar automáticamente.';
+                estado.className = 'text-xs text-amber-400';
+            } finally {
+                telemetriaEnCurso = false;
             }
         }
+
+        document.addEventListener('visibilitychange', () => {
+            if (document.visibilityState === 'visible') cargarTelemetriaReal();
+        });
+        document.addEventListener('bsred:presencia', cargarTelemetriaReal);
+        window.addEventListener('online', cargarTelemetriaReal);
+        window.addEventListener('offline', cargarTelemetriaReal);
 
         // ==========================================
         // ACTIVACIÓN REAL DE GPS CHOFER
@@ -334,9 +442,20 @@
             } catch (e) {}
         }
 
-        function cerrarSesion() {
-            localStorage.removeItem('usuarioSesion');
-            window.location.href = '/';
+        async function cerrarSesion() {
+            const boton = document.getElementById('btn-cerrar-sesion');
+            boton.disabled = true;
+            try {
+                const res = await solicitarAPI('/api/logout', { method: 'POST' });
+                if (!res.ok) throw new Error('logout');
+                usuarioSesion = null;
+                ocultarPaneles();
+                clearInterval(intervaloTelemetria);
+                window.location.replace('/');
+            } catch (_) {
+                alert('No se pudo cerrar la sesión. Revisa la conexión e inténtalo nuevamente.');
+                boton.disabled = false;
+            }
         }
 
         iniciarPanel();

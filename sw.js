@@ -1,9 +1,9 @@
 // Service Worker: network-first para HTML y APIs, cache-first para estáticos
-const CACHE = 'bsred-v2';
+const CACHE = 'bsred-v3';
 const ASSETS = [
-  '/', 
+  '/',
   '/logo.jpg',
-  'https://cdn.tailwindcss.com'
+  '/telemetria.js'
 ];
 
 self.addEventListener('install', e => {
@@ -14,7 +14,7 @@ self.addEventListener('install', e => {
 self.addEventListener('activate', e => {
   e.waitUntil(
     caches.keys().then(keys => Promise.all(
-      keys.filter(k => k !== CACHE).map(k => caches.delete(k))
+      keys.filter(k => k.startsWith('bsred-') && k !== CACHE).map(k => caches.delete(k))
     ))
   );
   self.clients.claim();
@@ -25,15 +25,23 @@ self.addEventListener('fetch', e => {
 
   // 1. IGNORAR PETICIONES POST (Login, Registro, GPS)
   if (e.request.method === 'POST') {
-    return; 
+    return;
   }
 
-  // 2. PÁGINAS HTML y API: Network-first (Busca en internet primero siempre)
-  if (url.pathname.includes('/api/') || url.pathname.includes('.html') || url.pathname === '/usuario' || url.pathname === '/') {
+  // Las sesiones y métricas en vivo nunca se guardan ni se leen del caché.
+  if (url.pathname.startsWith('/api/')) {
+    e.respondWith(fetch(e.request, { cache: 'no-store' }));
+    return;
+  }
+
+  // 2. PÁGINAS HTML: Network-first
+  if ( url.pathname.includes('.html') || url.pathname === '/usuario' || url.pathname === '/') {
     e.respondWith(
       fetch(e.request).then(res => {
-        const copy = res.clone();
-        caches.open(CACHE).then(c => c.put(e.request, copy));
+        if (res.ok) {
+          const copy = res.clone();
+          caches.open(CACHE).then(c => c.put(e.request, copy));
+        }
         return res;
       }).catch(() => caches.match(e.request))
     );

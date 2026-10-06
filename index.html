@@ -5,6 +5,7 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Tótem y Sistema de Gestión - Terminal Panguipulli</title>
 
+    <script src="/telemetria.js" defer></script>
     <script src="https://cdn.tailwindcss.com"></script>
     
     <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
@@ -97,6 +98,7 @@
                     <input type="password" id="login-password" required placeholder="••••••••"
                            class="w-full bg-slate-800 border border-slate-700 rounded-lg px-3 py-2 text-sm text-white focus:outline-none focus:border-blue-500">
                 </div>
+                <p id="login-error" class="text-xs text-rose-400 hidden" role="alert"></p>
                 <button type="submit" class="w-full bg-blue-600 hover:bg-blue-500 text-white font-semibold py-2 rounded-lg text-sm transition">
                     Ingresar
                 </button>
@@ -155,14 +157,15 @@
         const PALETA_SALIDAS = ["#3b82f6", "#06b6d4", "#10b981", "#6366f1", "#8b5cf6"];
         const PALETA_LLEGADAS = ["#f59e0b", "#ec4899", "#f97316", "#ef4444", "#eab308"];
 
-        const map = L.map('map').setView(COORDENADAS["panguipulli"], 10);
-        
-        // --- AQUÍ ESTÁ EL MAPA NUEVO SIN MARCA DE AGUA (ESRI DARK GRAY) ---
-        L.tileLayer('https://server.arcgisonline.com/ArcGIS/rest/services/Canvas/World_Dark_Gray_Base/MapServer/tile/{z}/{y}/{x}', { 
-            maxZoom: 16,
-            attribution: 'Tiles © Esri'
-        }).addTo(map);
-        // ------------------------------------------------------------------
+        const map = typeof L !== 'undefined'
+            ? L.map('map').setView(COORDENADAS["panguipulli"], 10)
+            : null;
+        if (map) {
+            L.tileLayer('https://server.arcgisonline.com/ArcGIS/rest/services/Canvas/World_Dark_Gray_Base/MapServer/tile/{z}/{y}/{x}', {
+                maxZoom: 16,
+                attribution: 'Tiles © Esri'
+            }).addTo(map);
+        }
 
         let currentTab = 'salidas';
         let datosHorarios = [];
@@ -170,7 +173,7 @@
         let itemSeleccionadoIndex = null;
         let mostrantoMapaMovil = false;
 
-        let usuarioSesion = JSON.parse(localStorage.getItem('usuarioSesion'));
+        let usuarioSesion = null;
 
         function actualizarInterfazSesion() {
             const btn = document.getElementById('btn-cuenta-header');
@@ -187,7 +190,43 @@
             }
         }
         
-        actualizarInterfazSesion();
+        async function solicitarAPI(url, opciones = {}) {
+            const controlador = new AbortController();
+            let tiempoLimite;
+            const vencimiento = new Promise((_, rechazar) => {
+                tiempoLimite = setTimeout(() => {
+                    controlador.abort();
+                    rechazar(new Error('Tiempo de espera agotado'));
+                }, 8000);
+            });
+            try {
+                const solicitud = (async () => {
+                    const res = await fetch(url, {
+                        ...opciones, credentials: 'same-origin', cache: 'no-store', signal: controlador.signal
+                    });
+                    const data = res.status === 204 ? null : await res.json();
+                    return { status: res.status, ok: res.ok, data };
+                })();
+                // El límite incluye el cuerpo JSON, no solamente las cabeceras.
+                return await Promise.race([solicitud, vencimiento]);
+            } finally {
+                clearTimeout(tiempoLimite);
+            }
+        }
+
+        async function recuperarSesion() {
+            try {
+                const res = await solicitarAPI('/api/sesion');
+                if (res.ok) {
+                    const data = res.data;
+                    if (data.success && data.user) usuarioSesion = data.user;
+                }
+            } catch (_) {
+                // El acceso al perfil se verifica nuevamente en el servidor.
+            }
+            actualizarInterfazSesion();
+        }
+        recuperarSesion();
 
         function abrirModalAuth() { document.getElementById('modal-auth').classList.remove('hidden'); }
         function cerrarModalAuth() { document.getElementById('modal-auth').classList.add('hidden'); }
@@ -197,21 +236,39 @@
             document.getElementById('form-registro').classList.toggle('hidden', vista !== 'registro');
         }
 
-        function procesarLogin(e) {
+        async function procesarLogin(e) {
             e.preventDefault();
-            const email = document.getElementById('login-email').value;
-            const pass = document.getElementById('login-password').value;
-
-            if (email === "bsredpanguipulli@gmail.com" && pass === "csgo775599") {
-                usuarioSesion = { rol: "admin", nombre: "Admin General", email };
-            } else if (email.includes("empresa")) {
-                usuarioSesion = { rol: "empresa", nombre: "Empresa Transportes", email };
-            } else {
-                usuarioSesion = { rol: "pasajero", nombre: "Pasajero", email };
+            const boton = e.currentTarget.querySelector('button[type="submit"]');
+            const error = document.getElementById('login-error');
+            error.classList.add('hidden');
+            boton.disabled = true;
+            boton.textContent = 'Verificando...';
+            try {
+                const res = await solicitarAPI('/api/login', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    credentials: 'same-origin',
+                    cache: 'no-store',
+                    body: JSON.stringify({
+                        email: document.getElementById('login-email').value.trim(),
+                        password: document.getElementById('login-password').value
+                    })
+                });
+                const data = res.data;
+                if (!res.ok || !data.success || !data.user) {
+                    error.textContent = data.error || 'No se pudo iniciar sesión. Revisa tu correo y contraseña.';
+                    error.classList.remove('hidden');
+                    return;
+                }
+                document.getElementById('login-password').value = '';
+                window.location.href = '/usuario';
+            } catch (_) {
+                error.textContent = 'No se pudo conectar. Inténtalo nuevamente.';
+                error.classList.remove('hidden');
+            } finally {
+                boton.disabled = false;
+                boton.textContent = 'Ingresar';
             }
-
-            localStorage.setItem('usuarioSesion', JSON.stringify(usuarioSesion));
-            window.location.href = '/usuario'; 
         }
 
         async function procesarRegistro(e) {
@@ -224,17 +281,19 @@
             };
 
             try {
-                const res = await fetch('/api/registro', {
+                const res = await solicitarAPI('/api/registro', {
                     method: 'POST',
                     headers: { 'Content-Type': 'application/json' },
+                    credentials: 'same-origin',
+                    cache: 'no-store',
                     body: JSON.stringify(payload)
                 });
 
                 if (res.ok) {
-                    alert('¡Cuenta creada exitosamente!');
-                    usuarioSesion = { rol: payload.rol, nombre: payload.nombre, email: payload.email };
-                    localStorage.setItem('usuarioSesion', JSON.stringify(usuarioSesion));
-                    window.location.href = '/usuario';
+                    alert('¡Cuenta creada! Inicia sesión con tu correo y contraseña.');
+                    document.getElementById('login-email').value = payload.email;
+                    document.getElementById('reg-password').value = '';
+                    alternarAuth('login');
                 } else {
                     alert('Error al crear usuario (quizás el correo ya existe).');
                 }
@@ -253,7 +312,7 @@
                 panel.style.transform = 'translateX(-100%)';
                 icono.innerText = '📋';
                 txt.innerText = 'Ver Panel';
-                setTimeout(() => { map.invalidateSize(); }, 300);
+                setTimeout(() => { if (map) map.invalidateSize(); }, 300);
             } else {
                 panel.style.transform = 'translateX(0)';
                 icono.innerText = '🗺️';
@@ -323,6 +382,10 @@
         }
 
         function actualizarMapa() {
+            if (!map) {
+                document.getElementById("estado-mapa").innerText = "Mapa no disponible; horarios disponibles en el panel";
+                return;
+            }
             Object.keys(capasRutas).forEach(k => {
                 map.removeLayer(capasRutas[k].polyline);
             });

@@ -1,26 +1,140 @@
 import os
-from datetime import datetime
-from zoneinfo import ZoneInfo
-from flask import Flask, request, jsonify, send_file
+import hashlib
+import re
+import secrets
+from flask import Flask, request, jsonify, send_file, send_from_directory
 from flask_cors import CORS
+from werkzeug.middleware.proxy_fix import ProxyFix
 import psycopg2
 from psycopg2.extras import RealDictCursor
 from dotenv import load_dotenv
 
 load_dotenv()
 
-app = Flask(__name__, static_folder='.', static_url_path='')
+app = Flask(__name__, static_folder=None)
+app.wsgi_app = ProxyFix(app.wsgi_app, x_proto=1)
 CORS(app)
 
-DATABASE_URL = os.environ.get(
-    "DATABASE_URL", 
-    "postgresql://postgres:csgo775599@db.nxcpiacfkakrdoxuidhy.supabase.co:5432/postgres"
-)
+DATABASE_URL = os.environ.get("DATABASE_URL")
 
-CHILE_TZ = ZoneInfo("America/Santiago")
+SESSION_COOKIE = "bsred_sesion"
+VISITOR_COOKIE = "bsred_visitante"
+SESSION_SECONDS = 24 * 60 * 60
+ONLINE_SECONDS = 90
+TOKEN_PATTERN = re.compile(r"^[A-Za-z0-9_-]{43}$")
 
 def get_db_connection():
-    return psycopg2.connect(DATABASE_URL, cursor_factory=RealDictCursor)
+    if not DATABASE_URL:
+        raise RuntimeError("DATABASE_URL no está configurada")
+    return psycopg2.connect(DATABASE_URL, cursor_factory=RealDictCursor, connect_timeout=8)
+
+
+def cookie_token(name):
+    token = request.cookies.get(name, "")
+    return token if TOKEN_PATTERN.fullmatch(token) else None
+
+
+def token_hash(token):
+    return hashlib.sha256(token.encode("ascii")).hexdigest()
+
+
+def current_user(cur):
+    token = cookie_token(SESSION_COOKIE)
+    if not token:
+        return None
+    cur.execute("""
+        SELECT u.id, u.nombre, u.email, LOWER(TRIM(u.rol)) AS rol
+        FROM sesiones_web s
+        JOIN usuarios u ON u.id = s.usuario_id
+        WHERE s.token_hash = %s AND s.expira_en > CURRENT_TIMESTAMP;
+    """, (token_hash(token),))
+    return cur.fetchone()
+
+
+def set_private_cookie(response, name, value, max_age):
+    response.set_cookie(name, value, max_age=max_age, httponly=True,
+                        secure=request.is_secure, samesite="Lax", path="/")
+
+
+@app.after_request
+def prevent_api_cache(response):
+    if request.path.startswith("/api/"):
+        response.headers["Cache-Control"] = "no-store, private"
+        response.vary.add("Cookie")
+    return response
+
+
+@app.route('/api/presencia', methods=['POST'])
+def registrar_presencia():
+    datos = request.get_json(silent=True)
+    if not isinstance(datos, dict) or not isinstance(datos.get("visible"), bool):
+        return jsonify({"success": False, "message": "Actividad inválida"}), 400
+    visitante = cookie_token(VISITOR_COOKIE) or secrets.token_urlsafe(32)
+    conn = None
+    try:
+        conn = get_db_connection()
+        with conn.cursor() as cur:
+            cur.execute("""
+                INSERT INTO visitantes_web (visitante_hash, ultima_visita, ultima_actividad)
+                VALUES (%s, CURRENT_TIMESTAMP,
+                        CASE WHEN %s THEN CURRENT_TIMESTAMP ELSE NULL END)
+                ON CONFLICT (visitante_hash) DO UPDATE SET
+                    ultima_visita = CURRENT_TIMESTAMP,
+                    ultima_actividad = CASE WHEN %s THEN CURRENT_TIMESTAMP
+                                           ELSE visitantes_web.ultima_actividad END;
+            """, (token_hash(visitante), datos["visible"], datos["visible"]))
+        conn.commit()
+        response = jsonify({"success": True})
+        set_private_cookie(response, VISITOR_COOKIE, visitante, 365 * 24 * 60 * 60)
+        return response
+    except Exception as e:
+        app.logger.error("No se pudo registrar presencia: %s", type(e).__name__)
+        return jsonify({"success": False, "message": "No se pudo registrar actividad"}), 503
+    finally:
+        if conn:
+            conn.close()
+
+
+@app.route('/api/sesion', methods=['GET'])
+def obtener_sesion():
+    if not cookie_token(SESSION_COOKIE):
+        return jsonify({"success": False, "message": "Inicia sesión"}), 401
+    conn = None
+    try:
+        conn = get_db_connection()
+        with conn.cursor() as cur:
+            user = current_user(cur)
+        if user:
+            return jsonify({"success": True, "user": user})
+        return jsonify({"success": False, "message": "Sesión expirada"}), 401
+    except Exception as e:
+        app.logger.error("No se pudo consultar la sesión: %s", type(e).__name__)
+        return jsonify({"success": False, "message": "No se pudo verificar la sesión"}), 503
+    finally:
+        if conn:
+            conn.close()
+
+
+@app.route('/api/logout', methods=['POST'])
+def logout():
+    token = cookie_token(SESSION_COOKIE)
+    conn = None
+    try:
+        if token:
+            conn = get_db_connection()
+            with conn.cursor() as cur:
+                cur.execute("DELETE FROM sesiones_web WHERE token_hash = %s;", (token_hash(token),))
+            conn.commit()
+        response = jsonify({"success": True})
+        response.delete_cookie(SESSION_COOKIE, path="/", httponly=True,
+                               secure=request.is_secure, samesite="Lax")
+        return response
+    except Exception as e:
+        app.logger.error("No se pudo cerrar la sesión: %s", type(e).__name__)
+        return jsonify({"success": False, "message": "No se pudo cerrar la sesión"}), 503
+    finally:
+        if conn:
+            conn.close()
 
 # ==========================================
 # RUTAS DE PÁGINAS ESTÁTICAS
@@ -38,6 +152,16 @@ def usuario():
         if os.path.exists(f):
             return send_file(f)
     return "usuario.html no encontrado", 404
+
+
+@app.route('/<path:filename>')
+def public_asset(filename):
+    if filename not in {
+        'index.html', 'usuario.html', 'manifest.json', 'sw.js', 'telemetria.js',
+        'logo.jpg', 'logo_192.png', 'logo_512.png'
+    }:
+        return "Archivo no encontrado", 404
+    return send_from_directory(app.root_path, filename)
 
 # ==========================================
 # ENDPOINT: RECORRIDOS Y HORARIOS
@@ -119,36 +243,57 @@ def obtener_horarios():
 # ==========================================
 @app.route('/api/admin/telemetria', methods=['GET'])
 def telemetria_admin():
+    if not cookie_token(SESSION_COOKIE):
+        return jsonify({"success": False, "message": "Inicia sesión"}), 401
     conn = None
     try:
         conn = get_db_connection()
         cur = conn.cursor()
+        user = current_user(cur)
+        if not user:
+            return jsonify({"success": False, "message": "Sesión expirada"}), 401
+        if user['rol'] != 'admin':
+            return jsonify({"success": False, "message": "Acceso sólo para administradores"}), 403
 
-        # 1. Total y desglose de consultas del día de hoy (Hora Chile)
+        # Un registro por navegador, compartido entre pestañas y páginas.
         cur.execute("""
-            SELECT fecha_hora FROM registro_consultas 
-            WHERE fecha_hora AT TIME ZONE 'America/Santiago' >= CURRENT_DATE AT TIME ZONE 'America/Santiago';
+            SELECT COUNT(*) FILTER (
+                       WHERE ultima_visita >= CURRENT_TIMESTAMP - INTERVAL '24 hours'
+                   ) AS visitantes_24h,
+                   COUNT(*) FILTER (
+                       WHERE ultima_actividad >= CURRENT_TIMESTAMP - (%s * INTERVAL '1 second')
+                   ) AS usuarios_online,
+                   CURRENT_TIMESTAMP AS actualizado_en
+            FROM visitantes_web;
+        """, (ONLINE_SECONDS,))
+        visitantes = cur.fetchone()
+
+        # Consultas de horarios del día calendario en Chile; no son visitantes.
+        cur.execute("""
+            SELECT CASE
+                       WHEN EXTRACT(HOUR FROM fecha_hora AT TIME ZONE 'America/Santiago') >= 6
+                        AND EXTRACT(HOUR FROM fecha_hora AT TIME ZONE 'America/Santiago') < 10 THEN 0
+                       WHEN EXTRACT(HOUR FROM fecha_hora AT TIME ZONE 'America/Santiago') < 12
+                        AND EXTRACT(HOUR FROM fecha_hora AT TIME ZONE 'America/Santiago') >= 10 THEN 1
+                       WHEN EXTRACT(HOUR FROM fecha_hora AT TIME ZONE 'America/Santiago') < 15
+                        AND EXTRACT(HOUR FROM fecha_hora AT TIME ZONE 'America/Santiago') >= 12 THEN 2
+                       WHEN EXTRACT(HOUR FROM fecha_hora AT TIME ZONE 'America/Santiago') < 19
+                        AND EXTRACT(HOUR FROM fecha_hora AT TIME ZONE 'America/Santiago') >= 15 THEN 3
+                       ELSE 4
+                   END AS grupo, COUNT(*) AS total
+            FROM registro_consultas
+            WHERE fecha_hora >= (
+                (CURRENT_TIMESTAMP AT TIME ZONE 'America/Santiago')::date::timestamp
+                AT TIME ZONE 'America/Santiago'
+            ) AND fecha_hora <= CURRENT_TIMESTAMP
+            GROUP BY 1;
         """)
-        registros_hoy = cur.fetchall()
-        total_consultas = len(registros_hoy)
-
-        # 2. Histograma de 5 barras de afluencia
         afluencia = [0, 0, 0, 0, 0]
-        for r in registros_hoy:
-            hora = r['fecha_hora'].astimezone(CHILE_TZ).hour
-            if 6 <= hora < 10:
-                afluencia[0] += 1
-            elif 10 <= hora < 12:
-                afluencia[1] += 1
-            elif 12 <= hora < 15:
-                afluencia[2] += 1
-            elif 15 <= hora < 19:
-                afluencia[3] += 1
-            else:
-                afluencia[4] += 1
-
-        max_val = max(afluencia) if max(afluencia) > 0 else 1
-        alturas_pct = [int((val / max_val) * 100) if max_val > 0 else 15 for val in afluencia]
+        for grupo in cur.fetchall():
+            afluencia[grupo['grupo']] = grupo['total']
+        total_consultas = sum(afluencia)
+        max_val = max(afluencia) or 1
+        alturas_pct = [int(val / max_val * 100) for val in afluencia]
 
         # 3. Choferes con GPS activo
         cur.execute("SELECT COUNT(*) as total FROM usuarios WHERE LOWER(rol) = 'chofer' AND gps_activo = TRUE;")
@@ -158,33 +303,32 @@ def telemetria_admin():
         cur.execute("SELECT COUNT(*) as total FROM empresas;")
         empresas_totales = cur.fetchone()['total']
 
-        # 5. Capacidad de andenes utilizados actualmente
+        # Andenes presentes en los horarios, sin simular ocupación física.
         cur.execute("SELECT COUNT(DISTINCT anden) as ocupados FROM horarios WHERE anden IS NOT NULL;")
         andenes_ocupados = cur.fetchone()['ocupados'] or 0
-        total_andenes = 10
-        capacidad_pct = min(int((andenes_ocupados / total_andenes) * 100), 100)
-        if capacidad_pct == 0:
-            capacidad_pct = 80
 
         cur.close()
 
         return jsonify({
             "success": True,
             "metricas": {
+                "visitantes_24h": visitantes['visitantes_24h'],
+                "usuarios_online": visitantes['usuarios_online'],
                 "consultas_diarias": total_consultas,
                 "buses_activos": choferes_gps,
-                "puntualidad": 98.5,
-                "capacidad_terminal": capacidad_pct,
+                "andenes_programados": andenes_ocupados,
                 "empresas_registradas": empresas_totales,
                 "choferes_gps": choferes_gps
             },
+            "actualizado_en": visitantes['actualizado_en'].isoformat(),
+            "ventana_online_segundos": ONLINE_SECONDS,
             "grafico_afluencia_pct": alturas_pct,
             "grafico_afluencia_raw": afluencia
         }), 200
 
     except Exception as e:
-        print(f"Error telemetría: {e}")
-        return jsonify({"success": False, "message": str(e)}), 500
+        app.logger.error("No se pudo consultar telemetría: %s", type(e).__name__)
+        return jsonify({"success": False, "message": "Telemetría temporalmente no disponible"}), 503
     finally:
         if conn:
             conn.close()
@@ -216,7 +360,9 @@ def actualizar_gps_chofer():
 # ==========================================
 @app.route('/api/login', methods=['POST'])
 def login():
-    datos = request.get_json() or {}
+    datos = request.get_json(silent=True)
+    if not isinstance(datos, dict) or not all(isinstance(datos.get(k), str) for k in ('email', 'password')):
+        return jsonify({"success": False, "message": "Credenciales inválidas"}), 400
     email = datos.get('email', '').strip().lower()
     password = datos.get('password', '').strip()
     conn = None
@@ -224,28 +370,48 @@ def login():
         conn = get_db_connection()
         cur = conn.cursor()
         cur.execute(
-            "SELECT id, nombre, email, rol FROM usuarios WHERE LOWER(email) = %s AND password = %s;", 
+            "SELECT id, nombre, email, LOWER(TRIM(rol)) AS rol FROM usuarios WHERE LOWER(TRIM(email)) = %s AND password = %s;",
             (email, password)
         )
         usuario_db = cur.fetchone()
-        cur.close()
-
+        previous_token = cookie_token(SESSION_COOKIE)
+        if previous_token:
+            cur.execute("DELETE FROM sesiones_web WHERE token_hash = %s;", (token_hash(previous_token),))
         if usuario_db:
-            return jsonify({"success": True, "user": usuario_db}), 200
-        return jsonify({"success": False, "message": "Credenciales inválidas"}), 401
+            token = secrets.token_urlsafe(32)
+            cur.execute("""
+                INSERT INTO sesiones_web (token_hash, usuario_id, expira_en)
+                VALUES (%s, %s, CURRENT_TIMESTAMP + (%s * INTERVAL '1 second'));
+            """, (token_hash(token), usuario_db['id'], SESSION_SECONDS))
+            conn.commit()
+            response = jsonify({"success": True, "user": usuario_db})
+            set_private_cookie(response, SESSION_COOKIE, token, SESSION_SECONDS)
+            return response
+        conn.commit()
+        response = jsonify({"success": False, "message": "Credenciales inválidas"})
+        response.delete_cookie(SESSION_COOKIE, path="/", httponly=True,
+                               secure=request.is_secure, samesite="Lax")
+        return response, 401
     except Exception as e:
-        return jsonify({"success": False, "message": str(e)}), 500
+        app.logger.error("No se pudo iniciar sesión: %s", type(e).__name__)
+        return jsonify({"success": False, "message": "No se pudo iniciar sesión"}), 503
     finally:
         if conn:
             conn.close()
 
 @app.route('/api/registro', methods=['POST'])
 def registro():
-    datos = request.get_json() or {}
+    datos = request.get_json(silent=True)
+    if not isinstance(datos, dict) or not all(isinstance(datos.get(k), str) for k in ('nombre', 'email', 'password')):
+        return jsonify({"success": False, "message": "Datos de registro inválidos"}), 400
+    if not isinstance(datos.get('rol', 'pasajero'), str):
+        return jsonify({"success": False, "message": "Tipo de cuenta inválido"}), 400
     nombre = datos.get('nombre', '').strip()
     email = datos.get('email', '').strip().lower()
     password = datos.get('password', '').strip()
     rol = datos.get('rol', 'pasajero').strip().lower()
+    if rol not in ('pasajero', 'empresa'):
+        return jsonify({"success": False, "message": "Tipo de cuenta no permitido"}), 400
     conn = None
     try:
         conn = get_db_connection()
