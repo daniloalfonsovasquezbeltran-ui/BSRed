@@ -1,7 +1,7 @@
 import os
 from datetime import datetime
 from zoneinfo import ZoneInfo
-from flask import Flask, request, jsonify, send_from_directory
+from flask import Flask, request, jsonify, send_file
 from flask_cors import CORS
 import psycopg2
 from psycopg2.extras import RealDictCursor
@@ -12,31 +12,110 @@ load_dotenv()
 app = Flask(__name__, static_folder='.', static_url_path='')
 CORS(app)
 
-# Cadena de conexión desde variables de entorno de Render o local
 DATABASE_URL = os.environ.get(
     "DATABASE_URL", 
     "postgresql://postgres:csgo775599@db.nxcpiacfkakrdoxuidhy.supabase.co:5432/postgres"
 )
 
-# Zona horaria de Chile
 CHILE_TZ = ZoneInfo("America/Santiago")
 
 def get_db_connection():
     return psycopg2.connect(DATABASE_URL, cursor_factory=RealDictCursor)
 
 # ==========================================
-# RUTAS DE PÁGINAS WEB (FRONTEND)
+# RUTAS DE PÁGINAS ESTÁTICAS
 # ==========================================
 @app.route('/')
 def index():
-    return send_from_directory('.', 'index.html')
+    for f in ['index.html', 'index (1).html']:
+        if os.path.exists(f):
+            return send_file(f)
+    return "index.html no encontrado", 404
 
 @app.route('/usuario')
 def usuario():
-    return send_from_directory('.', 'usuario.html')
+    for f in ['usuario.html', 'usuario (1).html']:
+        if os.path.exists(f):
+            return send_file(f)
+    return "usuario.html no encontrado", 404
 
 # ==========================================
-# ENDPOINT: TELEMETRÍA REAL PARA ADMINISTRADOR
+# ENDPOINT: RECORRIDOS Y HORARIOS
+# ==========================================
+@app.route('/api/horarios', methods=['GET'])
+def obtener_horarios():
+    tab = request.args.get('tab', 'salidas').lower()
+    busqueda = request.args.get('q', '').strip()
+    
+    # Normalizar singular/plural ('salidas' -> 'salida', 'llegadas' -> 'llegada')
+    tipo_filtro = 'salida' if 'salida' in tab else 'llegada'
+    
+    conn = None
+    try:
+        conn = get_db_connection()
+        cur = conn.cursor()
+
+        # 1. Registrar telemetría de consulta en la BD
+        try:
+            cur.execute("""
+                CREATE TABLE IF NOT EXISTS registro_consultas (
+                    id SERIAL PRIMARY KEY,
+                    fecha_hora TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP,
+                    tab VARCHAR(50),
+                    termino_busqueda VARCHAR(255)
+                );
+            """)
+            cur.execute(
+                "INSERT INTO registro_consultas (tab, termino_busqueda) VALUES (%s, %s);",
+                (tab, busqueda)
+            )
+            conn.commit()
+        except Exception as e_tel:
+            conn.rollback()
+
+        # 2. Consultar horarios uniendo con la tabla empresas
+        sql = """
+            SELECT 
+                h.id,
+                h.tipo,
+                h.origen,
+                h.destino,
+                TO_CHAR(h.salida, 'HH24:MI') AS salida,
+                TO_CHAR(h.llegada, 'HH24:MI') AS llegada,
+                COALESCE(h.anden, '1') AS anden,
+                COALESCE(h.dias, 'Todos los días') AS dias,
+                COALESCE(e.nombre, 'Terminal Panguipulli') AS empresa
+            FROM horarios h
+            LEFT JOIN empresas e ON h.empresa_id = e.id
+            WHERE LOWER(h.tipo) LIKE %s
+        """
+        params = [f"%{tipo_filtro}%"]
+
+        if busqueda:
+            sql += """ AND (
+                LOWER(h.destino) LIKE %s 
+                OR LOWER(h.origen) LIKE %s 
+                OR LOWER(COALESCE(e.nombre, '')) LIKE %s
+            )"""
+            like_val = f"%{busqueda.lower()}%"
+            params.extend([like_val, like_val, like_val])
+
+        sql += " ORDER BY h.salida ASC;"
+        cur.execute(sql, tuple(params))
+        horarios = cur.fetchall()
+        cur.close()
+
+        return jsonify(horarios), 200
+
+    except Exception as e:
+        print(f"Error consultando horarios: {e}")
+        return jsonify([]), 500
+    finally:
+        if conn:
+            conn.close()
+
+# ==========================================
+# ENDPOINT: TELEMETRÍA REAL EN VIVO
 # ==========================================
 @app.route('/api/admin/telemetria', methods=['GET'])
 def telemetria_admin():
@@ -45,7 +124,7 @@ def telemetria_admin():
         conn = get_db_connection()
         cur = conn.cursor()
 
-        # 1. Total de consultas realizadas hoy (hora local Chile)
+        # 1. Total y desglose de consultas del día de hoy (Hora Chile)
         cur.execute("""
             SELECT fecha_hora FROM registro_consultas 
             WHERE fecha_hora AT TIME ZONE 'America/Santiago' >= CURRENT_DATE AT TIME ZONE 'America/Santiago';
@@ -53,8 +132,7 @@ def telemetria_admin():
         registros_hoy = cur.fetchall()
         total_consultas = len(registros_hoy)
 
-        # 2. Afluencia por bloques horarios (5 bloques para las 5 barras del gráfico)
-        # Bloques: 06:00-09:59 (08:00), 10:00-11:59, 12:00-14:59 (Mediodía Pico), 15:00-18:59, 19:00-23:59 (Tarde/Noche)
+        # 2. Histograma de 5 barras de afluencia
         afluencia = [0, 0, 0, 0, 0]
         for r in registros_hoy:
             hora = r['fecha_hora'].astimezone(CHILE_TZ).hour
@@ -69,25 +147,24 @@ def telemetria_admin():
             else:
                 afluencia[4] += 1
 
-        # Normalizar porcentajes para la altura de las barras CSS (0% a 100%)
         max_val = max(afluencia) if max(afluencia) > 0 else 1
-        alturas_pct = [int((val / max_val) * 100) if max_val > 0 else 10 for val in afluencia]
+        alturas_pct = [int((val / max_val) * 100) if max_val > 0 else 15 for val in afluencia]
 
         # 3. Choferes con GPS activo
         cur.execute("SELECT COUNT(*) as total FROM usuarios WHERE LOWER(rol) = 'chofer' AND gps_activo = TRUE;")
         choferes_gps = cur.fetchone()['total']
 
-        # 4. Empresas de transportes registradas
-        cur.execute("SELECT COUNT(*) as total FROM usuarios WHERE LOWER(rol) = 'empresa';")
-        empresas_registradas = cur.fetchone()['total']
+        # 4. Total de empresas registradas (desde la tabla empresas)
+        cur.execute("SELECT COUNT(*) as total FROM empresas;")
+        empresas_totales = cur.fetchone()['total']
 
-        # 5. Capacidad de andenes ocupados hoy
-        cur.execute("SELECT COUNT(DISTINCT anden) as ocupados FROM horarios;")
+        # 5. Capacidad de andenes utilizados actualmente
+        cur.execute("SELECT COUNT(DISTINCT anden) as ocupados FROM horarios WHERE anden IS NOT NULL;")
         andenes_ocupados = cur.fetchone()['ocupados'] or 0
-        total_andenes = 10  # Capacidad máxima del terminal
+        total_andenes = 10
         capacidad_pct = min(int((andenes_ocupados / total_andenes) * 100), 100)
         if capacidad_pct == 0:
-            capacidad_pct = 75  # Valor base si aún no se configuran andenes
+            capacidad_pct = 80
 
         cur.close()
 
@@ -98,7 +175,7 @@ def telemetria_admin():
                 "buses_activos": choferes_gps,
                 "puntualidad": 98.5,
                 "capacidad_terminal": capacidad_pct,
-                "empresas_registradas": empresas_registradas,
+                "empresas_registradas": empresas_totales,
                 "choferes_gps": choferes_gps
             },
             "grafico_afluencia_pct": alturas_pct,
@@ -113,58 +190,18 @@ def telemetria_admin():
             conn.close()
 
 # ==========================================
-# ENDPOINT: HORARIOS (REGISTRA TELEMETRÍA AUTOMÁTICAMENTE)
-# ==========================================
-@app.route('/api/horarios', methods=['GET'])
-def obtener_horarios():
-    tab = request.args.get('tab', 'salidas').lower()
-    busqueda = request.args.get('q', '').strip()
-    conn = None
-    try:
-        conn = get_db_connection()
-        cur = conn.cursor()
-
-        # REGISTRO DE TELEMETRÍA REAL EN BASE DE DATOS
-        cur.execute(
-            "INSERT INTO registro_consultas (tab, termino_busqueda) VALUES (%s, %s);",
-            (tab, busqueda)
-        )
-        conn.commit()
-
-        # Búsqueda de horarios
-        query = "SELECT * FROM horarios WHERE LOWER(tipo) = %s"
-        params = [tab]
-        if busqueda:
-            query += " AND (LOWER(destino) LIKE %s OR LOWER(origen) LIKE %s OR LOWER(empresa) LIKE %s)"
-            like_val = f"%{busqueda.lower()}%"
-            params.extend([like_val, like_val, like_val])
-
-        query += " ORDER BY salida ASC;"
-        cur.execute(query, tuple(params))
-        horarios = cur.fetchall()
-        cur.close()
-
-        return jsonify(horarios), 200
-    except Exception as e:
-        print(f"Error horarios: {e}")
-        return jsonify([]), 500
-    finally:
-        if conn:
-            conn.close()
-
-# ==========================================
-# ENDPOINT: ACTIVAR/DESACTIVAR GPS CHOFER
+# ENDPOINT: CONTROL GPS DEL CHOFER
 # ==========================================
 @app.route('/api/chofer/gps', methods=['POST'])
 def actualizar_gps_chofer():
     datos = request.get_json() or {}
-    email = datos.get('email')
+    email = datos.get('email', '')
     activo = datos.get('activo', False)
     conn = None
     try:
         conn = get_db_connection()
         cur = conn.cursor()
-        cur.execute("UPDATE usuarios SET gps_activo = %s WHERE email = %s;", (activo, email))
+        cur.execute("UPDATE usuarios SET gps_activo = %s WHERE LOWER(email) = LOWER(%s);", (activo, email))
         conn.commit()
         cur.close()
         return jsonify({"success": True}), 200
@@ -186,14 +223,16 @@ def login():
     try:
         conn = get_db_connection()
         cur = conn.cursor()
-        cur.execute("SELECT id, nombre, email, rol FROM usuarios WHERE LOWER(email) = %s AND password = %s;", (email, password))
-        usuario = cur.fetchone()
+        cur.execute(
+            "SELECT id, nombre, email, rol FROM usuarios WHERE LOWER(email) = %s AND password = %s;", 
+            (email, password)
+        )
+        usuario_db = cur.fetchone()
         cur.close()
 
-        if usuario:
-            return jsonify({"success": True, "user": usuario}), 200
-        else:
-            return jsonify({"success": False, "message": "Credenciales inválidas"}), 401
+        if usuario_db:
+            return jsonify({"success": True, "user": usuario_db}), 200
+        return jsonify({"success": False, "message": "Credenciales inválidas"}), 401
     except Exception as e:
         return jsonify({"success": False, "message": str(e)}), 500
     finally:
@@ -217,9 +256,9 @@ def registro():
         )
         conn.commit()
         cur.close()
-        return jsonify({"success": True, "message": "Usuario registrado exitosamente"}), 201
+        return jsonify({"success": True, "message": "Usuario registrado"}), 201
     except psycopg2.IntegrityError:
-        return jsonify({"success": False, "message": "El correo ya se encuentra registrado"}), 400
+        return jsonify({"success": False, "message": "El correo ya está registrado"}), 400
     except Exception as e:
         return jsonify({"success": False, "message": str(e)}), 500
     finally:
