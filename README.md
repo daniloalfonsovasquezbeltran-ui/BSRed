@@ -6,3 +6,6 @@ La medición de visitantes y presencia para administradores se describe en
 
 Los trazados por carretera y la posición estimada de buses se describen en
 [Recorridos y ubicación estimada](docs/mapa-rutas.md).
+
+Los favoritos y las notificaciones antes de la salida se describen en
+[Avisos al dispositivo](docs/avisos-dispositivo.md).

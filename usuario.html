@@ -3,9 +3,14 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <link rel="manifest" href="/manifest.json">
+    <link rel="apple-touch-icon" href="/logo_192.png">
+    <meta name="theme-color" content="#0b1220">
+    <meta name="apple-mobile-web-app-capable" content="yes">
     <title>Panel de Control - BSRed Terminal Panguipulli</title>
     <!-- Tailwind CSS -->
     <script src="/telemetria.js" defer></script>
+    <script src="/favoritos.js" defer></script>
     <script src="https://cdn.tailwindcss.com"></script>
     <style>
         .custom-scrollbar::-webkit-scrollbar { width: 6px; }
@@ -35,6 +40,9 @@
                 </button>
                 <button onclick="cambiarSeccion('actividad')" id="nav-actividad" class="w-full flex items-center gap-3 px-4 py-3 rounded-xl text-slate-400 hover:bg-slate-800 hover:text-white transition">
                     <span>🚌</span> <span id="txt-nav-secundario">Gestión</span>
+                </button>
+                <button onclick="cambiarSeccion('favoritos')" id="nav-favoritos" class="w-full flex items-center gap-3 px-4 py-3 rounded-xl text-slate-400 hover:bg-slate-800 hover:text-white transition">
+                    <span aria-hidden="true">★</span> <span>Mis favoritos</span>
                 </button>
                 <button onclick="cambiarSeccion('notificaciones')" id="nav-notificaciones" class="w-full flex items-center gap-3 px-4 py-3 rounded-xl text-slate-400 hover:bg-slate-800 hover:text-white transition">
                     <span>🔔</span> <span>Notificaciones</span>
@@ -209,10 +217,32 @@
         <section id="panel-pasajero" class="hidden space-y-6">
             <div class="bg-slate-900 border border-slate-800 rounded-2xl p-6">
                 <h3 class="font-bold text-lg text-white mb-2">Panel del Pasajero</h3>
-                <p class="text-xs text-slate-400">Accede a tus recorridos favoritos y estado de salidas desde el mapa general.</p>
+                <p class="text-sm text-slate-400">Guarda tus recorridos con la estrella del mapa y recibe un aviso antes de salir del terminal de Panguipulli.</p>
+                <div class="mt-4 flex flex-wrap gap-3">
+                    <a href="/" class="px-4 py-2 rounded-xl bg-blue-600 text-white text-sm font-semibold">Buscar un recorrido</a>
+                    <button type="button" onclick="cambiarSeccion('favoritos')" class="px-4 py-2 rounded-xl border border-slate-600 text-sm">Mis favoritos</button>
+                </div>
             </div>
         </section>
 
+        <section id="panel-favoritos" class="hidden space-y-5 max-w-3xl">
+            <div class="bg-slate-900 border border-slate-800 rounded-2xl p-6">
+                <h2 class="font-bold text-xl text-white">Mis recorridos favoritos</h2>
+                <p class="mt-2 text-sm text-slate-400">Elige cuánto antes quieres el aviso para las salidas desde el terminal de Panguipulli. Se usa el horario programado, en hora de Chile.</p>
+                <a href="/" class="inline-block mt-4 text-sm text-blue-400 underline">Añadir recorridos desde el mapa</a>
+            </div>
+            <p id="favoritos-panel-estado" class="text-sm text-slate-400" role="status" aria-live="polite"></p>
+            <div id="lista-favoritos" class="space-y-3"></div>
+        </section>
+
+        <section id="panel-notificaciones" class="hidden max-w-3xl">
+            <div class="bg-slate-900 border border-slate-800 rounded-2xl p-6 space-y-4">
+                <h2 class="font-bold text-xl text-white">Avisos en este dispositivo</h2>
+                <p class="text-sm text-slate-400">Recibe una notificación antes de la salida programada de tus favoritos desde el terminal de Panguipulli, incluso con la página cerrada.</p>
+                <div id="avisos-dispositivo"></div>
+                <p class="text-xs text-slate-500">Los avisos necesitan conexión y permiso de notificaciones. La entrega puede depender del navegador y del ahorro de batería del dispositivo; no confirma la salida real del bus.</p>
+            </div>
+        </section>
     </main>
 
     <!-- CONTROLADORES JAVASCRIPT -->
@@ -222,6 +252,8 @@
         });
 
         let usuarioSesion = null;
+        let favoritosControl = null;
+        let seccionActual = 'dashboard';
         let intervaloTelemetria = null;
         let telemetriaEnCurso = false;
         let ultimaActualizacion = null;
@@ -251,7 +283,7 @@
         }
 
         function ocultarPaneles() {
-            ['admin', 'empresa', 'chofer', 'pasajero'].forEach(rol => {
+            ['admin', 'empresa', 'chofer', 'pasajero', 'favoritos', 'notificaciones'].forEach(rol => {
                 document.getElementById(`panel-${rol}`).classList.add('hidden');
             });
         }
@@ -265,6 +297,7 @@
             ocultarPaneles();
             clearInterval(intervaloTelemetria);
             usuarioSesion = null;
+            if (favoritosControl) favoritosControl.actualizarSesion(null);
             try {
                 const res = await solicitarAPI('/api/sesion');
                 if (res.status === 401) {
@@ -284,6 +317,7 @@
             document.getElementById('user-display-name').textContent = usuarioSesion.nombre || 'Usuario';
             document.getElementById('user-role-badge').textContent = (usuarioSesion.rol || 'pasajero').toUpperCase();
 
+            if (favoritosControl) favoritosControl.actualizarSesion(usuarioSesion);
             const rol = (usuarioSesion.rol || '').toLowerCase();
             if (rol === 'admin') {
                 document.getElementById('panel-admin').classList.remove('hidden');
@@ -301,7 +335,42 @@
                 document.getElementById('panel-pasajero').classList.remove('hidden');
                 document.getElementById('avatar-container').textContent = '👤';
             }
+            const seccionInicial = window.location.hash === '#favoritos' ? 'favoritos'
+                : window.location.hash === '#notificaciones' ? 'notificaciones' : seccionActual;
+            cambiarSeccion(seccionInicial);
         }
+
+        function cambiarSeccion(seccion) {
+            if (!usuarioSesion) return;
+            seccionActual = ['favoritos', 'notificaciones', 'actividad'].includes(seccion) ? seccion : 'dashboard';
+            ocultarPaneles();
+            const rol = ['admin', 'empresa', 'chofer'].includes((usuarioSesion.rol || '').toLowerCase())
+                ? usuarioSesion.rol.toLowerCase() : 'pasajero';
+            const panel = ['favoritos', 'notificaciones'].includes(seccionActual) ? seccionActual : rol;
+            document.getElementById(`panel-${panel}`).classList.remove('hidden');
+            ['dashboard', 'actividad', 'favoritos', 'notificaciones'].forEach(nombre => {
+                const activo = nombre === seccionActual;
+                document.getElementById(`nav-${nombre}`).className = `w-full flex items-center gap-3 px-4 py-3 rounded-xl transition ${activo
+                    ? 'bg-blue-600 text-white font-semibold shadow-lg shadow-blue-600/20'
+                    : 'text-slate-400 hover:bg-slate-800 hover:text-white'}`;
+            });
+            if (seccionActual === 'favoritos' && favoritosControl) favoritosControl.refrescar();
+            if (seccionActual === 'notificaciones' && favoritosControl) favoritosControl.refrescarDispositivo();
+        }
+
+        function iniciarFavoritosPanel() {
+            if (!window.BSRedFavoritos) return;
+            favoritosControl = window.BSRedFavoritos.crear({
+                usuario: usuarioSesion,
+                solicitarLogin: () => window.location.replace('/'),
+                estado: document.getElementById('favoritos-panel-estado'),
+                lista: document.getElementById('lista-favoritos'),
+                notificaciones: document.getElementById('avisos-dispositivo'),
+                onSesionVencida: () => window.location.replace('/')
+            });
+        }
+        if (document.readyState === 'loading') document.addEventListener('DOMContentLoaded', iniciarFavoritosPanel, { once: true });
+        else iniciarFavoritosPanel();
 
         function formatearNumero(valor) {
             return typeof valor === 'number' && Number.isFinite(valor) && valor >= 0
@@ -449,6 +518,10 @@
                 const res = await solicitarAPI('/api/logout', { method: 'POST' });
                 if (!res.ok) throw new Error('logout');
                 usuarioSesion = null;
+                if (favoritosControl) {
+                    favoritosControl.actualizarSesion(null);
+                    await favoritosControl.desvincularNavegador();
+                }
                 ocultarPaneles();
                 clearInterval(intervaloTelemetria);
                 window.location.replace('/');

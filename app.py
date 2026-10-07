@@ -2,6 +2,7 @@ import os
 import hashlib
 import re
 import secrets
+import threading
 from datetime import datetime, timezone
 from flask import Flask, request, jsonify, send_file, send_from_directory
 from flask_cors import CORS
@@ -10,6 +11,8 @@ import psycopg2
 from psycopg2.extras import RealDictCursor
 from dotenv import load_dotenv
 from rutas import route_definition, route_geometry, schedule_windows, RouteDefinitionError, RoutingUnavailable
+from avisos import run_notification_cycle, start_notification_scheduler
+from favoritos import DEVICE_COOKIE, register_favorites, revoke_device
 
 load_dotenv()
 
@@ -40,16 +43,19 @@ def token_hash(token):
     return hashlib.sha256(token.encode("ascii")).hexdigest()
 
 
-def current_user(cur):
+def current_user(cur, lock=False):
     token = cookie_token(SESSION_COOKIE)
     if not token:
         return None
-    cur.execute("""
+    query = """
         SELECT u.id, u.nombre, u.email, LOWER(TRIM(u.rol)) AS rol
         FROM sesiones_web s
         JOIN usuarios u ON u.id = s.usuario_id
         WHERE s.token_hash = %s AND s.expira_en > CURRENT_TIMESTAMP;
-    """, (token_hash(token),))
+    """
+    if lock:
+        query = query.rstrip().rstrip(';') + ' FOR UPDATE OF s;'
+    cur.execute(query, (token_hash(token),))
     return cur.fetchone()
 
 
@@ -120,12 +126,20 @@ def obtener_sesion():
 @app.route('/api/logout', methods=['POST'])
 def logout():
     token = cookie_token(SESSION_COOKIE)
+    device = cookie_token(DEVICE_COOKIE)
     conn = None
     try:
-        if token:
+        if token or device:
             conn = get_db_connection()
             with conn.cursor() as cur:
-                cur.execute("DELETE FROM sesiones_web WHERE token_hash = %s;", (token_hash(token),))
+                if token:
+                    # Mismo orden de bloqueos que la asociación del dispositivo.
+                    cur.execute('SELECT usuario_id FROM sesiones_web WHERE token_hash = %s FOR UPDATE;', (token_hash(token),))
+                    cur.fetchone()
+                if device:
+                    revoke_device(cur, token_hash(device))
+                if token:
+                    cur.execute("DELETE FROM sesiones_web WHERE token_hash = %s;", (token_hash(token),))
             conn.commit()
         response = jsonify({"success": True})
         response.delete_cookie(SESSION_COOKIE, path="/", httponly=True,
@@ -159,7 +173,7 @@ def usuario():
 @app.route('/<path:filename>')
 def public_asset(filename):
     if filename not in {
-        'index.html', 'usuario.html', 'manifest.json', 'sw.js', 'telemetria.js', 'mapa-rutas.js',
+        'index.html', 'usuario.html', 'manifest.json', 'sw.js', 'telemetria.js', 'mapa-rutas.js', 'favoritos.js',
         'logo.jpg', 'logo_192.png', 'logo_512.png'
     }:
         return "Archivo no encontrado", 404
@@ -411,6 +425,9 @@ def login():
         previous_token = cookie_token(SESSION_COOKIE)
         if previous_token:
             cur.execute("DELETE FROM sesiones_web WHERE token_hash = %s;", (token_hash(previous_token),))
+        device = cookie_token(DEVICE_COOKIE)
+        if device:
+            revoke_device(cur, token_hash(device))
         if usuario_db:
             token = secrets.token_urlsafe(32)
             cur.execute("""
@@ -464,6 +481,34 @@ def registro():
     finally:
         if conn:
             conn.close()
+
+register_favorites(app, get_db_connection, current_user, cookie_token, token_hash, set_private_cookie)
+
+_dispatch_lock = threading.Lock()
+_dispatch_thread = None
+
+
+@app.route('/api/interno/avisos-salida', methods=['POST'])
+def dispatch_departure_notifications():
+    global _dispatch_thread
+    expected = os.environ.get('NOTIFICATION_CRON_TOKEN', '')
+    received = request.headers.get('Authorization', '')
+    if not expected or not secrets.compare_digest(received, 'Bearer ' + expected):
+        return jsonify(success=False, message='No autorizado.'), 401
+    with _dispatch_lock:
+        if _dispatch_thread is None or not _dispatch_thread.is_alive():
+            def process():
+                try:
+                    run_notification_cycle(get_db_connection)
+                except Exception as error:
+                    app.logger.error('No se pudo procesar avisos de salida: %s', type(error).__name__)
+            _dispatch_thread = threading.Thread(target=process, name='bsred-despacho-avisos', daemon=True)
+            _dispatch_thread.start()
+    return jsonify(success=True, aceptado=True), 202
+
+
+start_notification_scheduler(get_db_connection, app.logger)
+
 
 if __name__ == '__main__':
     port = int(os.environ.get("PORT", 5000))
