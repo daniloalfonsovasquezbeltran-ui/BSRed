@@ -1,9 +1,10 @@
 // Service Worker: network-first para HTML y APIs, cache-first para estáticos
-const CACHE = 'bsred-v3';
+const CACHE = 'bsred-v4';
 const ASSETS = [
   '/',
   '/logo.jpg',
-  '/telemetria.js'
+  '/telemetria.js',
+  '/mapa-rutas.js'
 ];
 
 self.addEventListener('install', e => {

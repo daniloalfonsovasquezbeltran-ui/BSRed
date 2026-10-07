@@ -6,6 +6,7 @@
     <title>Tótem y Sistema de Gestión - Terminal Panguipulli</title>
 
     <script src="/telemetria.js" defer></script>
+    <script src="/mapa-rutas.js" defer></script>
     <script src="https://cdn.tailwindcss.com"></script>
     
     <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
@@ -67,16 +68,20 @@
         </div>
     </aside>
 
-    <!-- PANEL DERECHO: MAPA EN TIEMPO REAL -->
+    <!-- PANEL DERECHO: RECORRIDOS Y UBICACIÓN ESTIMADA -->
     <main class="flex-1 h-full relative bg-slate-950">
         <div id="map" class="w-full h-full"></div>
 
-        <div class="absolute top-4 right-4 z-[1000] bg-slate-900/90 border border-slate-800 p-3 rounded-xl backdrop-blur text-xs space-y-1 shadow-lg">
+        <div class="absolute top-4 right-4 z-[1000] max-w-[85%] bg-slate-900/90 border border-slate-800 p-3 rounded-xl backdrop-blur text-xs space-y-1 shadow-lg">
             <div class="flex items-center gap-2">
                 <span id="indicador-pulso" class="w-3 h-3 rounded-full bg-blue-500 animate-pulse"></span>
                 <span id="estado-mapa" class="font-medium text-slate-200">Cargando mapa...</span>
             </div>
-            <div id="info-detalle-ruta" class="text-[11px] text-slate-400 font-mono hidden"></div>
+            <p class="text-[11px] text-slate-300 font-semibold">Ubicación estimada por horario</p>
+            <p class="text-[10px] text-slate-400">Trazado por carretera aproximado</p>
+            <p class="text-[10px] text-slate-400">El bus aparece entre su salida y llegada programadas. La posición puede diferir de la real.</p>
+            <div id="info-detalle-ruta" class="text-[11px] text-slate-400 hidden"></div>
+            <button id="btn-reintentar-mapa" type="button" onclick="recargarTrazados()" class="hidden text-blue-400 underline text-[11px]">Reintentar trazados</button>
         </div>
     </main>
 
@@ -143,22 +148,13 @@
     </div>
 
     <script>
-        const COORDENADAS = {
-            "panguipulli": [-39.6430, -72.3312],
-            "coñaripe":    [-39.5532, -71.9790],
-            "los lagos":   [-39.8511, -72.8228],
-            "villarrica":  [-39.2822, -72.2272],
-            "liquiñe":     [-39.7360, -71.8540],
-            "puerto fuy":  [-39.8660, -71.8885],
-            "valdivia":    [-39.8142, -73.2459],
-            "temuco":      [-38.7399, -72.5901]
-        };
+        const CENTRO_TERMINAL = [-39.6430, -72.3312];
 
         const PALETA_SALIDAS = ["#3b82f6", "#06b6d4", "#10b981", "#6366f1", "#8b5cf6"];
         const PALETA_LLEGADAS = ["#f59e0b", "#ec4899", "#f97316", "#ef4444", "#eab308"];
 
         const map = typeof L !== 'undefined'
-            ? L.map('map').setView(COORDENADAS["panguipulli"], 10)
+            ? L.map('map').setView(CENTRO_TERMINAL, 10)
             : null;
         if (map) {
             L.tileLayer('https://server.arcgisonline.com/ArcGIS/rest/services/Canvas/World_Dark_Gray_Base/MapServer/tile/{z}/{y}/{x}', {
@@ -169,7 +165,11 @@
 
         let currentTab = 'salidas';
         let datosHorarios = [];
-        let capasRutas = {};
+        let mapaRutas = null;
+        let solicitudHorarios = null;
+        let versionHorarios = 0;
+        let esperaBusqueda = null;
+        const estadosRutas = new Map();
         let itemSeleccionadoIndex = null;
         let mostrantoMapaMovil = false;
 
@@ -256,7 +256,7 @@
                 });
                 const data = res.data;
                 if (!res.ok || !data.success || !data.user) {
-                    error.textContent = data.error || 'No se pudo iniciar sesión. Revisa tu correo y contraseña.';
+                    error.textContent = data.message || data.error || 'No se pudo iniciar sesión. Revisa tu correo y contraseña.';
                     error.classList.remove('hidden');
                     return;
                 }
@@ -320,108 +320,162 @@
             }
         }
 
+        function mostrarEstadoMapa(estado) {
+            document.getElementById('estado-mapa').textContent = estado.texto;
+            const indicador = document.getElementById('indicador-pulso');
+            indicador.className = `w-3 h-3 shrink-0 rounded-full ${estado.tipo === 'cargando'
+                ? 'bg-blue-500 animate-pulse' : (estado.tipo === 'error' || estado.tipo === 'parcial' ? 'bg-amber-500' : 'bg-blue-500')}`;
+            document.getElementById('btn-reintentar-mapa').classList.toggle('hidden', !['error', 'parcial'].includes(estado.tipo));
+        }
+
         function onBusquedaChange() {
-            cargarDatosAPI();
+            clearTimeout(esperaBusqueda);
+            versionHorarios++;
+            if (solicitudHorarios) solicitudHorarios.abort();
+            if (mapaRutas) mapaRutas.limpiar();
+            datosHorarios = [];
+            itemSeleccionadoIndex = null;
+            estadosRutas.clear();
+            renderizarLista(true);
+            mostrarEstadoMapa({ tipo: 'cargando', texto: 'Buscando horarios...' });
+            esperaBusqueda = setTimeout(cargarDatosAPI, 250);
         }
 
         async function cargarDatosAPI() {
-            document.getElementById("estado-mapa").innerText = "Obteniendo horarios...";
-            const query = document.getElementById('busqueda').value;
-            
+            const version = ++versionHorarios;
+            if (solicitudHorarios) solicitudHorarios.abort();
+            const controlador = new AbortController();
+            solicitudHorarios = controlador;
+            if (mapaRutas) mapaRutas.limpiar();
+            datosHorarios = [];
+            itemSeleccionadoIndex = null;
+            estadosRutas.clear();
+            renderizarLista(true);
+            mostrarEstadoMapa({ tipo: 'cargando', texto: 'Obteniendo horarios...' });
+            const query = document.getElementById('busqueda').value.trim();
+            let tiempoLimite;
+            const vencimiento = new Promise((_, fallo) => {
+                tiempoLimite = setTimeout(() => { controlador.abort(); fallo(new Error('timeout')); }, 10000);
+                controlador.signal.addEventListener('abort', () => fallo(new Error('cancelada')), { once: true });
+            });
             try {
-                const res = await fetch(`/api/horarios?tab=${currentTab}&q=${encodeURIComponent(query)}`);
-                datosHorarios = await res.json();
+                const solicitud = (async () => {
+                    const res = await fetch(`/api/horarios?tab=${currentTab}&q=${encodeURIComponent(query)}`, {
+                        signal: controlador.signal, credentials: 'same-origin', cache: 'no-store'
+                    });
+                    const datos = await res.json();
+                    if (!res.ok || !Array.isArray(datos)) throw new Error('horarios');
+                    return datos;
+                })();
+                const datos = await Promise.race([solicitud, vencimiento]);
+                if (version !== versionHorarios) return;
+                datosHorarios = datos;
                 renderizarLista();
-                actualizarMapa();
-            } catch (err) {
-                document.getElementById("estado-mapa").innerText = "Error de conexión";
+                if (mapaRutas) mapaRutas.mostrar(datosHorarios, { tab: currentTab });
+                else mostrarEstadoMapa({ tipo: 'error', texto: 'Mapa no disponible; consulta los horarios en el panel' });
+            } catch (_) {
+                if (version !== versionHorarios) return;
+                renderizarLista(false, 'No se pudieron cargar los horarios. Inténtalo nuevamente.');
+                mostrarEstadoMapa({ tipo: 'error', texto: 'No se pudieron cargar los horarios' });
+            } finally {
+                clearTimeout(tiempoLimite);
+                if (solicitudHorarios === controlador) solicitudHorarios = null;
             }
         }
 
         function cambiarTab(tab) {
             if (currentTab === tab) return;
+            clearTimeout(esperaBusqueda);
             currentTab = tab;
             itemSeleccionadoIndex = null;
             document.getElementById('tab-salidas').className = tab === 'salidas' ? 'flex-1 py-1.5 rounded-md bg-blue-600 text-white font-bold' : 'flex-1 py-1.5 text-slate-400';
             document.getElementById('tab-llegadas').className = tab === 'llegadas' ? 'flex-1 py-1.5 rounded-md bg-amber-600 text-white font-bold' : 'flex-1 py-1.5 text-slate-400';
-            document.getElementById('txt-tab-actual').innerText = tab === 'salidas' ? "Salidas" : "Llegadas";
+            document.getElementById('txt-tab-actual').textContent = tab === 'salidas' ? 'Salidas' : 'Llegadas';
             cargarDatosAPI();
         }
 
-        function renderizarLista() {
-            const contenedor = document.getElementById("lista-horarios");
-            contenedor.innerHTML = "";
-            const paleta = currentTab === 'salidas' ? PALETA_SALIDAS : PALETA_LLEGADAS;
-
-            if (datosHorarios.length === 0) {
-                contenedor.innerHTML = `<div class="text-center text-slate-500 py-10 text-sm">No se encontraron recorridos.</div>`;
-                return;
-            }
-
-            datosHorarios.forEach((item, index) => {
-                const color = paleta[index % paleta.length];
-                contenedor.innerHTML += `
-                <div onclick="seleccionarHorario(${index})"
-                     class="p-4 rounded-xl border transition cursor-pointer flex justify-between items-center ${
-                         itemSeleccionadoIndex === index ? 'bg-slate-800 border-blue-500 ring-2 ring-blue-500/30' : 'bg-slate-800/60 border-slate-700/60 hover:border-slate-500'
-                     }">
-                    <div class="space-y-1">
-                        <div class="flex items-center gap-2">
-                            <span class="w-3 h-3 rounded-full" style="background-color: ${color}"></span>
-                            <h3 class="font-bold text-white text-sm">${item.empresa}</h3>
-                            <span class="text-[10px] px-2 py-0.5 rounded-full bg-slate-700 text-slate-300">Andén ${item.anden}</span>
-                        </div>
-                        <p class="text-xs text-slate-300">${item.origen} ➔ <span class="font-bold text-white">${item.destino}</span></p>
-                    </div>
-                    <div class="text-right pl-2">
-                        <span class="text-xs text-slate-400 block">${currentTab === 'salidas' ? 'Salida' : 'Llegada'}</span>
-                        <span class="text-xl font-black text-white font-mono">${item.salida}</span>
-                    </div>
-                </div>`;
-            });
+        function crearTexto(etiqueta, clases, texto) {
+            const elemento = document.createElement(etiqueta);
+            elemento.className = clases;
+            elemento.textContent = texto;
+            return elemento;
         }
 
-        function actualizarMapa() {
-            if (!map) {
-                document.getElementById("estado-mapa").innerText = "Mapa no disponible; horarios disponibles en el panel";
+        function renderizarLista(cargando = false, error = '') {
+            const contenedor = document.getElementById('lista-horarios');
+            contenedor.replaceChildren();
+            if (!datosHorarios.length) {
+                contenedor.append(crearTexto('p', 'text-center text-slate-400 py-10 text-sm',
+                    error || (cargando ? 'Cargando horarios...' : 'No se encontraron recorridos.')));
                 return;
             }
-            Object.keys(capasRutas).forEach(k => {
-                map.removeLayer(capasRutas[k].polyline);
-            });
-            capasRutas = {};
-
             const paleta = currentTab === 'salidas' ? PALETA_SALIDAS : PALETA_LLEGADAS;
-            let coordsTotales = [];
-
             datosHorarios.forEach((item, index) => {
-                const origenGPS = COORDENADAS[(item.origen || "").toLowerCase()] || COORDENADAS["panguipulli"];
-                const destinoGPS = COORDENADAS[(item.destino || "").toLowerCase()] || COORDENADAS["panguipulli"];
-                
-                const ruta = [origenGPS, destinoGPS];
-                coordsTotales.push(...ruta);
-                const color = paleta[index % paleta.length];
-
-                const polyline = L.polyline(ruta, { color, weight: itemSeleccionadoIndex === index ? 6 : 3 }).addTo(map);
-                capasRutas[index] = { polyline };
+                const tarjeta = document.createElement('button');
+                tarjeta.type = 'button';
+                tarjeta.className = `w-full text-left p-4 rounded-xl border transition cursor-pointer flex justify-between items-center ${
+                    itemSeleccionadoIndex === index ? 'bg-slate-800 border-blue-500 ring-2 ring-blue-500/30' : 'bg-slate-800/60 border-slate-700/60 hover:border-slate-500'}`;
+                tarjeta.onclick = () => seleccionarHorario(index);
+                const detalle = crearTexto('div', 'space-y-1', '');
+                const cabecera = crearTexto('div', 'flex items-center gap-2', '');
+                const punto = crearTexto('span', 'w-3 h-3 shrink-0 rounded-full', '');
+                punto.style.backgroundColor = paleta[index % paleta.length];
+                cabecera.append(punto, crearTexto('h3', 'font-bold text-white text-sm', item.empresa || 'Servicio de buses'),
+                    crearTexto('span', 'text-[10px] px-2 py-0.5 rounded-full bg-slate-700 text-slate-300', `Andén ${item.anden || 'sin asignar'}`));
+                const datoEstado = estadosRutas.get(item.id);
+                const estado = crearTexto('p', `text-[10px] ${datoEstado ? (datoEstado.disponible ? 'text-blue-400' : 'text-amber-400') : 'text-slate-400'}`,
+                    datoEstado ? datoEstado.texto : (mapaRutas ? 'Buscando trazado...' : 'Mapa no disponible'));
+                estado.id = `estado-ruta-${item.id}`;
+                estado.title = datoEstado ? datoEstado.nota_itinerario || datoEstado.texto : '';
+                detalle.append(cabecera, crearTexto('p', 'text-xs text-slate-300', `${item.origen || ''} → ${item.destino || ''}`), estado);
+                const hora = crearTexto('div', 'text-right pl-2 shrink-0', '');
+                hora.append(crearTexto('span', 'text-xs text-slate-400 block', currentTab === 'salidas' ? 'Salida' : 'Llegada'),
+                    crearTexto('span', 'text-xl font-black text-white font-mono', (currentTab === 'salidas' ? item.salida : item.llegada) || '—'));
+                tarjeta.append(detalle, hora);
+                contenedor.append(tarjeta);
             });
-
-            if (coordsTotales.length > 0) {
-                map.fitBounds(L.latLngBounds(coordsTotales), { padding: [40, 40] });
-            } else {
-                map.setView(COORDENADAS["panguipulli"], 10);
-            }
-            
-            document.getElementById("estado-mapa").innerText = `${datosHorarios.length} rutas cargadas`;
         }
 
         function seleccionarHorario(index) {
-            itemSeleccionadoIndex = itemSeleccionadoIndex === index ? null : index;
+            itemSeleccionadoIndex = index == null || itemSeleccionadoIndex === index ? null : index;
             renderizarLista();
-            actualizarMapa();
+            if (mapaRutas) mapaRutas.seleccionar(itemSeleccionadoIndex == null ? null : datosHorarios[itemSeleccionadoIndex].id);
         }
 
-        cargarDatosAPI();
+        function recargarTrazados() {
+            if (mapaRutas && datosHorarios.length) mapaRutas.refrescar();
+            else cargarDatosAPI();
+        }
+
+        function iniciarMapaRutas() {
+            if (map && window.BSRedMapaRutas) {
+                mapaRutas = window.BSRedMapaRutas.crear({
+                    map, L, onEstado: mostrarEstadoMapa,
+                    onDetalle: texto => {
+                        const detalle = document.getElementById('info-detalle-ruta');
+                        detalle.textContent = texto;
+                        detalle.classList.toggle('hidden', !texto);
+                    },
+                    onRuta: (id, estado) => {
+                        estadosRutas.set(id, estado);
+                        const etiqueta = document.getElementById(`estado-ruta-${id}`);
+                        if (etiqueta) {
+                            etiqueta.textContent = estado.texto;
+                            etiqueta.title = estado.nota_itinerario || estado.texto;
+                            etiqueta.className = `text-[10px] ${estado.disponible ? 'text-blue-400' : 'text-amber-400'}`;
+                        }
+                    },
+                    onSeleccion: id => {
+                        const indice = datosHorarios.findIndex(item => item.id === id);
+                        if (indice >= 0) seleccionarHorario(indice);
+                    }
+                });
+            }
+            cargarDatosAPI();
+        }
+
+        if (document.readyState === 'loading') document.addEventListener('DOMContentLoaded', iniciarMapaRutas, { once: true });
+        else iniciarMapaRutas();
     </script>
 </body>
 </html>

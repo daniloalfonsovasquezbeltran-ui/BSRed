@@ -2,12 +2,14 @@ import os
 import hashlib
 import re
 import secrets
+from datetime import datetime, timezone
 from flask import Flask, request, jsonify, send_file, send_from_directory
 from flask_cors import CORS
 from werkzeug.middleware.proxy_fix import ProxyFix
 import psycopg2
 from psycopg2.extras import RealDictCursor
 from dotenv import load_dotenv
+from rutas import route_definition, route_geometry, schedule_windows, RouteDefinitionError, RoutingUnavailable
 
 load_dotenv()
 
@@ -157,11 +159,43 @@ def usuario():
 @app.route('/<path:filename>')
 def public_asset(filename):
     if filename not in {
-        'index.html', 'usuario.html', 'manifest.json', 'sw.js', 'telemetria.js',
+        'index.html', 'usuario.html', 'manifest.json', 'sw.js', 'telemetria.js', 'mapa-rutas.js',
         'logo.jpg', 'logo_192.png', 'logo_512.png'
     }:
         return "Archivo no encontrado", 404
     return send_from_directory(app.root_path, filename)
+
+
+@app.route('/api/mapa/ruta/<int:horario_id>', methods=['GET'])
+def obtener_ruta_mapa(horario_id):
+    conn = None
+    try:
+        conn = get_db_connection()
+        with conn.cursor() as cur:
+            cur.execute('SELECT id, origen, destino, salida, llegada, dias FROM horarios WHERE id = %s;', (horario_id,))
+            horario = cur.fetchone()
+        conn.close()
+        conn = None
+        if not horario:
+            return jsonify({'success': False, 'message': 'Recorrido no encontrado'}), 404
+        definition = route_definition(horario)
+        geometry = route_geometry(definition['origen'], definition['destino'], definition['via'])
+        now = datetime.now(timezone.utc)
+        windows = schedule_windows(horario['salida'], horario['llegada'], horario['dias'], now)
+        return jsonify({'success': True, 'horario_id': horario_id, **geometry, **windows,
+                        'servidor_en': now.isoformat(),
+                        'tipo_recorrido': definition['tipo_recorrido'],
+                        'nota_itinerario': definition['nota_itinerario']})
+    except RouteDefinitionError as error:
+        return jsonify({'success': False, 'message': str(error)}), 422
+    except RoutingUnavailable:
+        return jsonify({'success': False, 'message': 'Trayecto por carretera temporalmente no disponible'}), 503
+    except Exception as error:
+        app.logger.error('No se pudo consultar el trayecto: %s', type(error).__name__)
+        return jsonify({'success': False, 'message': 'No se pudo cargar este recorrido'}), 503
+    finally:
+        if conn:
+            conn.close()
 
 # ==========================================
 # ENDPOINT: RECORRIDOS Y HORARIOS
