@@ -13,6 +13,8 @@ from dotenv import load_dotenv
 from rutas import route_definition, route_geometry, schedule_windows, RouteDefinitionError, RoutingUnavailable
 from avisos import run_notification_cycle, start_notification_scheduler
 from favoritos import DEVICE_COOKIE, register_favorites, revoke_device
+from choferes import register_drivers
+from werkzeug.security import check_password_hash, generate_password_hash
 
 load_dotenv()
 
@@ -47,15 +49,26 @@ def current_user(cur, lock=False):
     token = cookie_token(SESSION_COOKIE)
     if not token:
         return None
+    session_hash = token_hash(token)
+    if lock:
+        # Usuario antes de sesión, también al suspender/eliminar y al iniciar viajes.
+        # La consulta final revalida la sesión después de esperar por el usuario.
+        cur.execute('SELECT usuario_id FROM sesiones_web WHERE token_hash=%s;', (session_hash,))
+        session = cur.fetchone()
+        if not session:
+            return None
+        cur.execute('SELECT id FROM usuarios WHERE id=%s FOR UPDATE;', (session['usuario_id'],))
+        if not cur.fetchone():
+            return None
     query = """
-        SELECT u.id, u.nombre, u.email, LOWER(TRIM(u.rol)) AS rol
+        SELECT u.id, u.nombre, u.email, LOWER(TRIM(u.rol)) AS rol, u.empresa_id
         FROM sesiones_web s
         JOIN usuarios u ON u.id = s.usuario_id
-        WHERE s.token_hash = %s AND s.expira_en > CURRENT_TIMESTAMP;
+        WHERE s.token_hash = %s AND s.expira_en > CURRENT_TIMESTAMP AND u.suspendido=FALSE;
     """
     if lock:
         query = query.rstrip().rstrip(';') + ' FOR UPDATE OF s;'
-    cur.execute(query, (token_hash(token),))
+    cur.execute(query, (session_hash,))
     return cur.fetchone()
 
 
@@ -132,8 +145,13 @@ def logout():
         if token or device:
             conn = get_db_connection()
             with conn.cursor() as cur:
+                user = current_user(cur, lock=True)
+                if user and user['rol'] == 'chofer':
+                    cur.execute("SELECT id FROM viajes WHERE chofer_id=%s AND estado='en_curso';", (user['id'],))
+                    if cur.fetchone():
+                        return jsonify(success=False, message='Finaliza el viaje antes de cerrar sesión.'), 409
                 if token:
-                    # Mismo orden de bloqueos que la asociación del dispositivo.
+                    # El usuario ya está bloqueado antes de comprobar el viaje.
                     cur.execute('SELECT usuario_id FROM sesiones_web WHERE token_hash = %s FOR UPDATE;', (token_hash(token),))
                     cur.fetchone()
                 if device:
@@ -174,7 +192,7 @@ def usuario():
 def public_asset(filename):
     if filename not in {
         'index.html', 'usuario.html', 'manifest.json', 'sw.js', 'telemetria.js', 'mapa-rutas.js', 'favoritos.js',
-        'logo.jpg', 'logo_192.png', 'logo_512.png'
+        'logo.jpg', 'logo_192.png', 'logo_512.png', 'choferes.js'
     }:
         return "Archivo no encontrado", 404
     return send_from_directory(app.root_path, filename)
@@ -344,7 +362,9 @@ def telemetria_admin():
         alturas_pct = [int(val / max_val * 100) for val in afluencia]
 
         # 3. Choferes con GPS activo
-        cur.execute("SELECT COUNT(*) as total FROM usuarios WHERE LOWER(rol) = 'chofer' AND gps_activo = TRUE;")
+        cur.execute("""SELECT COUNT(DISTINCT v.chofer_id) AS total FROM viajes v JOIN usuarios u ON u.id=v.chofer_id
+            WHERE u.suspendido=FALSE AND v.estado='en_curso' AND v.iniciado_en>CURRENT_TIMESTAMP-INTERVAL '24 hours'
+            AND v.ubicacion_en>CURRENT_TIMESTAMP-INTERVAL '2 minutes';""")
         choferes_gps = cur.fetchone()['total']
 
         # 4. Total de empresas registradas (desde la tabla empresas)
@@ -386,22 +406,7 @@ def telemetria_admin():
 # ==========================================
 @app.route('/api/chofer/gps', methods=['POST'])
 def actualizar_gps_chofer():
-    datos = request.get_json() or {}
-    email = datos.get('email', '')
-    activo = datos.get('activo', False)
-    conn = None
-    try:
-        conn = get_db_connection()
-        cur = conn.cursor()
-        cur.execute("UPDATE usuarios SET gps_activo = %s WHERE LOWER(email) = LOWER(%s);", (activo, email))
-        conn.commit()
-        cur.close()
-        return jsonify({"success": True}), 200
-    except Exception as e:
-        return jsonify({"success": False, "message": str(e)}), 500
-    finally:
-        if conn:
-            conn.close()
+    return jsonify(success=False, message='Inicia un viaje desde la consola de chofer. La bandera GPS anterior ya no se utiliza.'), 410
 
 # ==========================================
 # ENDPOINTS: LOGIN Y REGISTRO
@@ -412,16 +417,27 @@ def login():
     if not isinstance(datos, dict) or not all(isinstance(datos.get(k), str) for k in ('email', 'password')):
         return jsonify({"success": False, "message": "Credenciales inválidas"}), 400
     email = datos.get('email', '').strip().lower()
-    password = datos.get('password', '').strip()
+    password = datos.get('password', '')
+    if not email or not password or len(password)>128:
+        return jsonify(success=False, message='Credenciales inválidas'), 400
     conn = None
     try:
         conn = get_db_connection()
         cur = conn.cursor()
         cur.execute(
-            "SELECT id, nombre, email, LOWER(TRIM(rol)) AS rol FROM usuarios WHERE LOWER(TRIM(email)) = %s AND password = %s;",
-            (email, password)
+            "SELECT id, nombre, email, LOWER(TRIM(rol)) AS rol, empresa_id, password_hash FROM usuarios WHERE LOWER(TRIM(email)) = %s AND suspendido=FALSE FOR UPDATE;",
+            (email,)
         )
         usuario_db = cur.fetchone()
+        if usuario_db:
+            stored_hash = usuario_db.pop('password_hash')
+            if stored_hash:
+                valid = check_password_hash(stored_hash, password)
+            else:
+                cur.execute('SELECT 1 FROM usuarios WHERE id=%s AND password=%s;', (usuario_db['id'],password.strip()))
+                valid = bool(cur.fetchone())
+            if not valid:
+                usuario_db = None
         previous_token = cookie_token(SESSION_COOKIE)
         if previous_token:
             cur.execute("DELETE FROM sesiones_web WHERE token_hash = %s;", (token_hash(previous_token),))
@@ -459,30 +475,36 @@ def registro():
         return jsonify({"success": False, "message": "Tipo de cuenta inválido"}), 400
     nombre = datos.get('nombre', '').strip()
     email = datos.get('email', '').strip().lower()
-    password = datos.get('password', '').strip()
+    password = datos.get('password', '')
     rol = datos.get('rol', 'pasajero').strip().lower()
     if rol not in ('pasajero', 'empresa'):
         return jsonify({"success": False, "message": "Tipo de cuenta no permitido"}), 400
+    if not 2 <= len(nombre) <= 100 or len(email)>255 or not re.fullmatch(r'[^\s@]+@[^\s@]+\.[^\s@]+',email) or not 8 <= len(password) <= 128:
+        return jsonify(success=False, message='Indica nombre, correo válido y una contraseña de al menos 8 caracteres.'), 400
     conn = None
     try:
         conn = get_db_connection()
         cur = conn.cursor()
-        cur.execute(
-            "INSERT INTO usuarios (nombre, email, password, rol) VALUES (%s, %s, %s, %s);",
-            (nombre, email, password, rol)
-        )
+        empresa_id = None
+        if rol == 'empresa':
+            cur.execute('INSERT INTO empresas(nombre) VALUES(%s) RETURNING id;', (nombre,))
+            empresa_id = cur.fetchone()['id']
+        cur.execute("INSERT INTO usuarios (nombre, email, password, password_hash, rol, empresa_id) VALUES (%s, %s, '', %s, %s, %s);",
+                    (nombre, email, generate_password_hash(password), rol, empresa_id))
         conn.commit()
         cur.close()
         return jsonify({"success": True, "message": "Usuario registrado"}), 201
     except psycopg2.IntegrityError:
         return jsonify({"success": False, "message": "El correo ya está registrado"}), 400
     except Exception as e:
-        return jsonify({"success": False, "message": str(e)}), 500
+        app.logger.error('No se pudo registrar la cuenta: %s', type(e).__name__)
+        return jsonify(success=False, message='No se pudo registrar la cuenta. Inténtalo nuevamente.'), 503
     finally:
         if conn:
             conn.close()
 
 register_favorites(app, get_db_connection, current_user, cookie_token, token_hash, set_private_cookie)
+register_drivers(app, get_db_connection, current_user, token_hash)
 
 _dispatch_lock = threading.Lock()
 _dispatch_thread = None

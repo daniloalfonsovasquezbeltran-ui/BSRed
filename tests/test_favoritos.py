@@ -167,7 +167,7 @@ class FavoritesPostgresTests(unittest.TestCase):
                 );
             ''')
             migrations = Path(__file__).resolve().parents[1] / 'migrations'
-            migration_paths = [migrations / '001_telemetria_web.sql', next(migrations.glob('002_*.sql'))]
+            migration_paths = [migrations / '001_telemetria_web.sql', next(migrations.glob('002_*.sql')), migrations / '004_choferes_viajes.sql']
             for migration_path in migration_paths:
                 migration = migration_path.read_text().replace('public.', 'favoritos_test.')
                 cur.execute(migration)

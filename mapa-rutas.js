@@ -48,6 +48,8 @@
         let horarios = [], tab = 'salidas', seleccionado = null, generacion = 0;
         let cargando = false, desfaseServidor = 0, solicitudesActivas = 0, encuadrePendiente = false;
         const capas = new Map(), cache = new Map(), errores = new Map();
+        const marcadoresGPS = new Map();
+        let posicionesGPS = [], solicitandoGPS = false;
         const controladores = new Set(), cola = [];
         if (map.attributionControl) {
             map.attributionControl.addAttribution('Recorridos © <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a>');
@@ -72,6 +74,7 @@
                 quitarMarcador(capa);
             });
             capas.clear(); errores.clear(); horarios = []; seleccionado = null; cargando = false; encuadrePendiente = false;
+            marcadoresGPS.forEach(marcador => map.removeLayer(marcador)); marcadoresGPS.clear();
             detallar('');
         }
 
@@ -176,6 +179,12 @@
         }
 
         function actualizarDetalle() {
+            const gps = posicionesGPS.find(p => p.horario_id === seleccionado);
+            if (gps) {
+                const reciente = Number.isFinite(gps.latitud) && Date.now()+desfaseServidor-Date.parse(gps.ubicacion_en)<120000;
+                detallar(`Bus ${gps.patente} · ${reciente ? 'Ubicación GPS real' : 'Viaje activo: esperando una ubicación GPS reciente'}`);
+                return;
+            }
             const capa = capas.get(seleccionado);
             if (!capa) {
                 detallar(seleccionado == null ? '' : (errores.get(seleccionado) || 'Trazado no disponible para el recorrido seleccionado.'));
@@ -201,12 +210,14 @@
                 if (errores.size > sinTrazado) texto += ` · ${errores.size - sinTrazado} trazados sin actualizar`;
             }
             informar({ tipo, texto, trazadas: capas.size, total: horarios.length, busesEstimados: buses });
+            if (marcadoresGPS.size) informar({ tipo, texto: texto + ` · ${marcadoresGPS.size} buses con GPS real`, trazadas: capas.size, total: horarios.length, busesEstimados: buses });
             actualizarDetalle();
         }
 
         function moverBuses() {
             if (document.visibilityState !== 'visible') return;
             capas.forEach(capa => {
+                if (posicionesGPS.some(p => p.horario_id === capa.horario.id)) { quitarMarcador(capa); return; }
                 const ventana = ventanaActiva(capa);
                 if (!ventana) { quitarMarcador(capa); return; }
                 const posicion = interpolar(capa.dato.camino, ventana.proporcion);
@@ -221,7 +232,48 @@
                     capa.marcador.on('click', () => opciones.onSeleccion && opciones.onSeleccion(capa.horario.id));
                 }
             });
+            moverGPS();
             actualizarEstado();
+        }
+
+        function moverGPS() {
+            const activos = new Set();
+            for (const punto of posicionesGPS) {
+                const horario = horarios.find(h => h.id === punto.horario_id);
+                if (!horario || !Number.isFinite(punto.latitud) || !Number.isFinite(punto.longitud)
+                    || Math.abs(punto.latitud)>90 || Math.abs(punto.longitud)>180
+                    || Date.now()+desfaseServidor-Date.parse(punto.ubicacion_en)>=120000) continue;
+                activos.add(punto.viaje_id);
+                const contenido = document.createElement('div');
+                for (const texto of [`${horario.origen} → ${horario.destino}`, `Bus ${punto.patente} · Ubicación GPS real`,
+                    `Última actualización: ${new Date(punto.ubicacion_en).toLocaleTimeString('es-CL')} · precisión aproximada ${Math.round(punto.precision_m)} m`]) {
+                    const parrafo = document.createElement('p'); parrafo.textContent = texto; contenido.append(parrafo);
+                }
+                let marcador = marcadoresGPS.get(punto.viaje_id);
+                if (!marcador) {
+                    marcador = L.marker([punto.latitud,punto.longitud], {title: 'Bus: ubicación GPS real',icon:L.divIcon({
+                        className:'bus-gps-real',iconSize:[36,36],iconAnchor:[18,18],
+                        html:'<span role="img" aria-label="Bus: ubicación GPS real" style="display:flex;align-items:center;justify-content:center;width:36px;height:36px;border-radius:50%;background:#059669;border:3px solid white;box-shadow:0 2px 8px #0008;font-size:20px">🚌</span>'
+                    })}).addTo(map);
+                    marcador.bindPopup(contenido,{autoPan:false});
+                    marcador.on('click',() => opciones.onSeleccion && opciones.onSeleccion(punto.horario_id));
+                    marcadoresGPS.set(punto.viaje_id,marcador);
+                } else { marcador.setLatLng([punto.latitud,punto.longitud]); marcador.setPopupContent(contenido); }
+            }
+            marcadoresGPS.forEach((marcador,id) => { if (!activos.has(id)) { map.removeLayer(marcador); marcadoresGPS.delete(id); } });
+        }
+
+        async function cargarGPS() {
+            if (solicitandoGPS || document.visibilityState!=='visible' || !horarios.length) return;
+            solicitandoGPS=true;
+            try {
+                const response=await fetch('/api/mapa/posiciones',{cache:'no-store',credentials:'omit',signal:AbortSignal.timeout(15000)});
+                const data=await response.json();
+                if (!response.ok || !data.success || !Array.isArray(data.posiciones)) throw new Error('gps');
+                posicionesGPS=data.posiciones;
+                if (Number.isFinite(Date.parse(data.servidor_en))) desfaseServidor=Date.parse(data.servidor_en)-Date.now();
+            } catch (_) { /* Conservar el estado de viaje; ocultar los puntos cuando caducan. */ }
+            finally { solicitandoGPS=false; moverBuses(); }
         }
 
         function destacar() {
@@ -235,6 +287,10 @@
             const elegida = capas.get(seleccionado);
             const puntos = elegida ? elegida.dato.camino.puntos : Array.from(capas.values()).flatMap(capa => capa.dato.camino.puntos);
             if (puntos.length) map.fitBounds(L.latLngBounds(puntos), { padding: [40, 40], maxZoom: 12 });
+            else {
+                const gps=posicionesGPS.find(p => p.horario_id===seleccionado && Number.isFinite(p.latitud));
+                if(gps) map.setView([gps.latitud,gps.longitud],12);
+            }
         }
 
         function incorporar(horario, indice, dato) {
@@ -297,6 +353,7 @@
             encuadrePendiente = true;
             actualizarEstado();
             cargar(false);
+            cargarGPS();
         }
 
         function seleccionar(id) {
@@ -305,9 +362,10 @@
         }
 
         global.setInterval(moverBuses, 15000);
+        global.setInterval(cargarGPS, 15000);
         global.setInterval(() => cargar(true), 60000);
         document.addEventListener('visibilitychange', () => {
-            if (document.visibilityState === 'visible') { moverBuses(); cargar(true); }
+            if (document.visibilityState === 'visible') { moverBuses(); cargar(true); cargarGPS(); }
         });
         global.addEventListener('online', () => cargar(true));
         return { mostrar, seleccionar, limpiar, refrescar: () => cargar(true) };

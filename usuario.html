@@ -190,24 +190,41 @@
                     </table>
                 </div>
             </div>
+            <div class="bg-slate-900 border border-slate-800 rounded-2xl p-6 space-y-5">
+                <h3 class="font-bold text-lg">Cuentas de choferes de tu empresa</h3>
+                <p id="choferes-empresa" class="text-sm font-semibold text-blue-300"></p>
+                <p class="text-sm text-slate-400">Solo tu empresa puede crear y gestionar estas cuentas. Suspender o eliminar una cuenta cierra sus sesiones y detiene su viaje activo.</p>
+                <form id="form-crear-chofer" class="grid sm:grid-cols-2 gap-4">
+                    <label class="text-sm">Nombre completo<input name="nombre" required minlength="2" maxlength="100" autocomplete="name" class="block w-full p-3 mt-1 rounded-xl bg-slate-800"></label>
+                    <label class="text-sm">Correo<input name="email" type="email" required maxlength="255" autocomplete="email" class="block w-full p-3 mt-1 rounded-xl bg-slate-800"></label>
+                    <label class="text-sm">Teléfono (opcional)<input name="telefono" type="tel" maxlength="30" autocomplete="tel" class="block w-full p-3 mt-1 rounded-xl bg-slate-800"></label>
+                    <label class="text-sm">Licencia de conducir (opcional)<input name="licencia" maxlength="40" class="block w-full p-3 mt-1 rounded-xl bg-slate-800"></label>
+                    <label class="text-sm">Contraseña inicial<input name="password" type="password" required minlength="10" maxlength="128" autocomplete="new-password" class="block w-full p-3 mt-1 rounded-xl bg-slate-800"><span class="text-xs text-slate-400">Al menos 10 caracteres. Entrégala al chofer por un canal privado.</span></label>
+                    <button type="submit" class="self-end p-3 bg-blue-600 rounded-xl font-semibold">Crear cuenta de chofer</button>
+                </form>
+                <p id="choferes-estado" role="status" aria-live="polite" class="text-sm text-slate-300"></p>
+                <button id="choferes-recargar" type="button" class="text-blue-400 underline text-sm">Actualizar lista</button>
+                <div id="lista-choferes" class="space-y-3"></div>
+            </div>
         </section>
 
         <!-- ================================================================= -->
         <!-- 3. PANEL CHOFER / CONDUCTOR                                       -->
         <!-- ================================================================= -->
         <section id="panel-chofer" class="hidden space-y-6 max-w-2xl mx-auto">
-            <div class="bg-slate-900 border border-slate-800 rounded-2xl p-6 text-center space-y-4">
-                <span class="text-4xl">👨‍✈️</span>
-                <div>
-                    <h3 class="text-xl font-bold text-white">Consola de Conductor</h3>
-                    <p class="text-xs text-slate-400 mt-1">Transmisión de Ubicación GPS a Pasajeros</p>
-                </div>
-                <div class="pt-2">
-                    <button id="btn-gps-chofer" onclick="toggleGPSChofer()" class="w-full py-4 bg-emerald-600 hover:bg-emerald-500 text-white font-bold text-sm rounded-2xl transition shadow-lg shadow-emerald-600/30 flex items-center justify-center gap-2">
-                        <span class="w-3 h-3 rounded-full bg-white animate-ping"></span>
-                        <span>INICIAR TRANSMISIÓN GPS EN TIEMPO REAL</span>
-                    </button>
-                </div>
+            <div class="bg-slate-900 border border-slate-800 rounded-2xl p-6 space-y-5">
+                <h3 class="text-xl font-bold">Consola de conductor</h3>
+                <p class="text-sm text-slate-400">Elige el recorrido y el bus. Al iniciar el viaje se comparte la ubicación; al finalizar se detiene. La app Android puede mantener el GPS con la pantalla apagada.</p>
+                <p id="chofer-estado" role="status" aria-live="polite" class="text-sm"></p>
+                <form id="form-iniciar-viaje" class="space-y-4">
+                    <label class="block text-sm">Recorrido<select id="chofer-recorrido" required class="block w-full p-3 mt-1 bg-slate-800 rounded-xl"></select></label>
+                    <label class="block text-sm">Patente del bus<input id="chofer-patente" required minlength="4" maxlength="12" class="block w-full p-3 mt-1 bg-slate-800 rounded-xl" placeholder="Ej. ABCD12"></label>
+                    <button id="chofer-iniciar" type="submit" class="w-full p-4 bg-emerald-600 rounded-xl font-bold">Iniciar viaje y activar ubicación</button>
+                </form>
+                <p id="chofer-viaje" class="text-sm"></p>
+                <button id="chofer-permisos" type="button" class="p-3 rounded-xl bg-blue-600">Permitir ubicación / reanudar GPS</button>
+                <button id="chofer-finalizar" type="button" hidden class="w-full p-4 bg-rose-600 rounded-xl font-bold">Llegué al destino: finalizar viaje</button>
+                <p class="text-xs text-slate-400">En el navegador, el seguimiento requiere mantener esta página abierta y visible. Usa la app Android para continuar en segundo plano.</p>
             </div>
         </section>
 
@@ -246,6 +263,7 @@
     </main>
 
     <!-- CONTROLADORES JAVASCRIPT -->
+    <script src="/choferes.js"></script>
     <script>
         document.getElementById('fecha-actual').innerText = new Date().toLocaleDateString('es-CL', {
             weekday: 'long', year: 'numeric', month: 'long', day: 'numeric', timeZone: 'America/Santiago'
@@ -327,10 +345,11 @@
             } else if (rol === 'empresa') {
                 document.getElementById('panel-empresa').classList.remove('hidden');
                 document.getElementById('avatar-container').textContent = '🏢';
-                cargarHorariosEmpresa();
+                BSRedChoferes.iniciar(usuarioSesion);
             } else if (rol === 'chofer') {
                 document.getElementById('panel-chofer').classList.remove('hidden');
                 document.getElementById('avatar-container').textContent = '👨‍✈️';
+                BSRedChoferes.iniciar(usuarioSesion);
             } else {
                 document.getElementById('panel-pasajero').classList.remove('hidden');
                 document.getElementById('avatar-container').textContent = '👤';
@@ -462,61 +481,12 @@
         window.addEventListener('offline', cargarTelemetriaReal);
 
         // ==========================================
-        // ACTIVACIÓN REAL DE GPS CHOFER
-        // ==========================================
-        let gpsTransmitiendo = false;
-        async function toggleGPSChofer() {
-            gpsTransmitiendo = !gpsTransmitiendo;
-            const btn = document.getElementById('btn-gps-chofer');
-
-            try {
-                await fetch('/api/chofer/gps', {
-                    method: 'POST',
-                    headers: { 'Content-Type': 'application/json' },
-                    body: JSON.stringify({ email: usuarioSesion.email, activo: gpsTransmitiendo })
-                });
-            } catch (err) {
-                console.error("Error al sincronizar GPS con la base de datos");
-            }
-
-            if (gpsTransmitiendo) {
-                btn.className = "w-full py-4 bg-rose-600 hover:bg-rose-500 text-white font-bold text-sm rounded-2xl transition shadow-lg shadow-rose-600/30 flex items-center justify-center gap-2";
-                btn.innerHTML = `<span class="w-3 h-3 rounded-full bg-white animate-ping"></span><span>DETENER TRANSMISIÓN GPS</span>`;
-                alert('GPS Activado. Ahora apareces en la telemetría del Administrador.');
-            } else {
-                btn.className = "w-full py-4 bg-emerald-600 hover:bg-emerald-500 text-white font-bold text-sm rounded-2xl transition shadow-lg shadow-emerald-600/30 flex items-center justify-center gap-2";
-                btn.innerHTML = `<span class="w-3 h-3 rounded-full bg-white animate-ping"></span><span>INICIAR TRANSMISIÓN GPS EN TIEMPO REAL</span>`;
-            }
-        }
-
-        async function cargarHorariosEmpresa() {
-            try {
-                const res = await fetch('/api/horarios?tab=salidas');
-                const datos = await res.json();
-                const tbody = document.getElementById('tabla-empresa-horarios');
-                tbody.innerHTML = '';
-                if (Array.isArray(datos) && datos.length > 0) {
-                    datos.forEach(item => {
-                        tbody.innerHTML += `
-                            <tr class="hover:bg-slate-800/50">
-                                <td class="p-3 uppercase font-bold text-blue-400">${item.tipo}</td>
-                                <td class="p-3">${item.origen} ➔ <strong class="text-white">${item.destino}</strong></td>
-                                <td class="p-3 font-mono font-bold text-white">${item.salida}</td>
-                                <td class="p-3">Andén ${item.anden}</td>
-                                <td class="p-3">${item.dias}</td>
-                            </tr>
-                        `;
-                    });
-                }
-            } catch (e) {}
-        }
-
         async function cerrarSesion() {
             const boton = document.getElementById('btn-cerrar-sesion');
             boton.disabled = true;
             try {
                 const res = await solicitarAPI('/api/logout', { method: 'POST' });
-                if (!res.ok) throw new Error('logout');
+                if (!res.ok) throw new Error(res.data?.message || 'No se pudo cerrar la sesión.');
                 usuarioSesion = null;
                 if (favoritosControl) {
                     favoritosControl.actualizarSesion(null);
@@ -525,8 +495,8 @@
                 ocultarPaneles();
                 clearInterval(intervaloTelemetria);
                 window.location.replace('/');
-            } catch (_) {
-                alert('No se pudo cerrar la sesión. Revisa la conexión e inténtalo nuevamente.');
+            } catch (error) {
+                alert(error.message || 'No se pudo cerrar la sesión. Revisa la conexión e inténtalo nuevamente.');
                 boton.disabled = false;
             }
         }
