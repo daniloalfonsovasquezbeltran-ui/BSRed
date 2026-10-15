@@ -14,6 +14,8 @@ DEVICE_SECONDS = 365 * 24 * 60 * 60
 
 
 def revoke_device(cur, device_hash):
+    from notificaciones import revoke_android_device
+    revoke_android_device(cur,device_hash)
     cur.execute('''
         UPDATE suscripciones_push SET activa = FALSE, actualizada_en = CURRENT_TIMESTAMP
         WHERE dispositivo_hash = %s RETURNING id;
@@ -77,6 +79,8 @@ def register_favorites(app, get_connection, current_user, cookie_token, token_ha
                     user = current_user(cur, lock=request.method != 'GET')
                     if not user:
                         return jsonify(success=False, message='Tu sesión ha expirado. Inicia sesión nuevamente.'), 401
+                    if request.method != 'GET' and user.get('requiere_cambio_password'):
+                        return jsonify(success=False,code='PASSWORD_CHANGE_REQUIRED',message='Cambia tu contraseña inicial antes de continuar.'),403
                     response = make_response(func(cur, user, *args, **kwargs))
                 if response.status_code < 400:
                     conn.commit()

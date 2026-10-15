@@ -12,10 +12,12 @@
     <script src="/telemetria.js" defer></script>
     <script src="/mapa-rutas.js" defer></script>
     <script src="/favoritos.js" defer></script>
-    <script src="https://cdn.tailwindcss.com"></script>
+    <link rel="stylesheet" href="/styles.css">
+    <script src="/offline.js" defer></script>
+    <script src="/accesibilidad.js" defer></script>
     
-    <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
-    <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
+    <link rel="stylesheet" href="/leaflet.css" />
+    <script src="/leaflet.js"></script>
 
     <style>
         .custom-scrollbar::-webkit-scrollbar { width: 5px; }
@@ -28,8 +30,9 @@
 </head>
 <body class="bg-slate-950 text-slate-100 h-screen w-screen overflow-hidden flex flex-col md:flex-row relative">
 
+    <a href="#lista-horarios" class="skip-link">Saltar a los horarios</a>
     <!-- BOTÓN FLOTANTE MÓVIL -->
-    <button onclick="toggleVistaMovil()" class="md:hidden absolute top-4 left-4 z-[1100] bg-blue-600 hover:bg-blue-500 text-white px-3 py-2 rounded-xl text-xs font-bold shadow-2xl flex items-center gap-1.5 transition">
+    <button onclick="toggleVistaMovil()" class="md:hidden fixed bottom-4 left-4 z-[1100] bg-blue-600 hover:bg-blue-500 text-white px-3 py-2 rounded-xl text-xs font-bold shadow-2xl flex items-center gap-1.5 transition">
         <span id="btn-movil-icono">🗺️</span> <span id="btn-movil-txt">Ver Mapa</span>
     </button>
 
@@ -37,7 +40,7 @@
     <aside id="panel-lateral" class="w-full md:w-[440px] h-full bg-slate-900 border-r border-slate-800 flex flex-col z-10 shadow-2xl absolute md:relative transition-all duration-300">
         
         <!-- Header con Botón de Usuario -->
-        <header class="p-4 border-b border-slate-800 bg-slate-900 flex items-center justify-between pl-20 md:pl-4">
+        <header class="p-4 border-b border-slate-800 bg-slate-900 flex items-center justify-between pl-4">
             <div>
                 <h1 class="text-lg font-bold text-white flex items-center gap-2">
                     🚌 BSRed Panguipulli
@@ -63,10 +66,29 @@
                     </button>
                 </div>
 
+                <label class="sr-only" for="busqueda">Buscar destino, empresa o andén</label>
                 <input id="busqueda" type="search" placeholder="Buscar destino, empresa o andén..."
                        oninput="onBusquedaChange()"
                        class="w-full bg-slate-800 border border-slate-700 rounded-lg px-3 py-2 text-sm text-white focus:outline-none focus:border-blue-500">
                 
+                <details class="filtros-avanzados">
+                    <summary>Filtrar recorridos</summary>
+                    <div class="op-grid mt-3">
+                        <label class="op-field">Fecha · Chile<input id="filtro-fecha" type="date" onchange="cargarDatosAPI()"></label>
+                        <label class="op-field">Empresa<select id="filtro-empresa" onchange="aplicarFiltros()"><option value="">Todas</option></select></label>
+                        <label class="op-field">Destino<select id="filtro-destino" onchange="aplicarFiltros()"><option value="">Todos</option></select></label>
+                        <label class="op-field">Sentido<select id="filtro-sentido" onchange="aplicarFiltros()"><option value="">Todos</option><option value="ida">Ida</option><option value="vuelta">Vuelta</option></select></label>
+                        <label class="op-field">Desde las<input id="filtro-desde" type="time" onchange="aplicarFiltros()"></label>
+                        <label class="op-field">Hasta las<input id="filtro-hasta" type="time" onchange="aplicarFiltros()"></label>
+                    </div>
+                    <div class="op-actions mt-3">
+                        <label><input id="filtro-favoritos" type="checkbox" onchange="aplicarFiltros()"> Solo favoritos</label>
+                        <label><input id="filtro-gps" type="checkbox" onchange="aplicarFiltros()"> Solo GPS conectado</label>
+                    </div>
+                    <button type="button" onclick="limpiarFiltros()" class="text-blue-300 underline text-sm mt-3">Limpiar filtros</button>
+                </details>
+                <p id="horarios-actualizacion" class="text-xs text-slate-300" role="status" aria-live="polite"></p>
+                <div data-accesibilidad></div>
                 <button id="btn-reset" onclick="seleccionarHorario(null)" 
                         class="w-full py-1.5 px-3 bg-slate-800 hover:bg-slate-700 text-blue-400 text-xs font-semibold rounded-lg border border-slate-700 transition flex items-center justify-center gap-1">
                     🌐 Ver todas las rutas (<span id="txt-tab-actual">Salidas</span>)
@@ -77,7 +99,9 @@
                 <p id="favoritos-mapa-estado" class="text-slate-400" role="status" aria-live="polite">Marca ★ para guardar un recorrido.</p>
                 <a href="/usuario#favoritos" class="text-blue-400 font-semibold whitespace-nowrap">Mis favoritos</a>
             </div>
-            <div id="lista-horarios" class="flex-1 overflow-y-auto p-4 space-y-3 custom-scrollbar"></div>
+            <p data-estado-conexion class="px-4 pt-2 text-xs text-slate-300" role="status"></p>
+            <div id="avisos-publicos" class="px-4 pt-2" aria-live="polite"></div>
+            <div id="lista-horarios" tabindex="-1" aria-label="Recorridos disponibles" class="flex-1 overflow-y-auto p-4 space-y-3 custom-scrollbar"></div>
         </div>
     </aside>
 
@@ -99,9 +123,9 @@
     </main>
 
     <!-- MODAL DE AUTENTICACIÓN -->
-    <div id="modal-auth" class="fixed inset-0 bg-slate-950/80 backdrop-blur-sm z-[2000] flex items-center justify-center p-4 hidden">
+    <div id="modal-auth" role="dialog" aria-modal="true" aria-label="Acceso a tu cuenta" class="fixed inset-0 bg-slate-950/80 backdrop-blur-sm z-[2000] flex items-center justify-center p-4 hidden">
         <div class="w-full max-w-sm bg-slate-900 border border-slate-800 rounded-2xl p-6 shadow-2xl relative">
-            <button onclick="cerrarModalAuth()" class="absolute top-4 right-4 text-slate-400 hover:text-white">✕</button>
+            <button aria-label="Cerrar acceso a la cuenta" type="button" onclick="cerrarModalAuth()" class="absolute top-4 right-4 text-slate-400 hover:text-white">✕</button>
 
             <!-- INICIO DE SESIÓN -->
             <form id="form-login" class="space-y-4" onsubmit="procesarLogin(event)">
@@ -121,6 +145,7 @@
                 <button type="submit" class="w-full bg-blue-600 hover:bg-blue-500 text-white font-semibold py-2 rounded-lg text-sm transition">
                     Ingresar
                 </button>
+                <a href="/usuario#recuperar" class="block text-center text-sm text-blue-300 underline">¿Olvidaste tu contraseña?</a>
                 <p class="text-center text-xs text-slate-400">
                     ¿Sin cuenta? <button type="button" onclick="alternarAuth('registro')" class="text-blue-400 hover:underline">Regístrate</button>
                 </p>
@@ -148,7 +173,7 @@
                 </div>
                 <div>
                     <label class="block text-xs text-slate-300 mb-1">Contraseña</label>
-                    <input type="password" id="reg-password" required placeholder="••••••••"
+                    <input type="password" id="reg-password" required minlength="10" maxlength="128" autocomplete="new-password" placeholder="••••••••"
                            class="w-full bg-slate-800 border border-slate-700 rounded-lg px-3 py-2 text-sm text-white focus:outline-none focus:border-blue-500">
                 </div>
                 <button type="submit" class="w-full bg-emerald-600 hover:bg-emerald-500 text-white font-semibold py-2 rounded-lg text-sm transition">
@@ -179,6 +204,9 @@
 
         let currentTab = 'salidas';
         let datosHorarios = [];
+        let horariosBase = [];
+        let gpsConectados = new Set();
+        let horariosGuardados = false;
         let mapaRutas = null;
         let solicitudHorarios = null;
         let versionHorarios = 0;
@@ -232,18 +260,28 @@
 
         async function recuperarSesion() {
             try {
+                if (window.BSRedOffline) {
+                    const cierre = await BSRedOffline.reconciliarCierre();
+                    if (cierre.pendiente && !cierre.viaje_activo) { usuarioSesion = null; actualizarInterfazSesion(); return; }
+                    if (cierre.viaje_activo) { window.location.replace('/usuario'); return; }
+                }
                 const res = await solicitarAPI('/api/sesion');
                 if (res.ok) {
                     const data = res.data;
-                    if (data.success && data.user) usuarioSesion = data.user;
+                    if (data.success && data.user) {
+                        usuarioSesion = data.user;
+                        if (window.BSRedOffline) BSRedOffline.sesion(usuarioSesion);
+                    }
+                } else if (res.status === 401 && window.BSRedOffline) {
+                    BSRedOffline.limpiarSesion();
                 }
             } catch (_) {
-                // El acceso al perfil se verifica nuevamente en el servidor.
+                usuarioSesion = window.BSRedOffline ? BSRedOffline.usuario() : null;
             }
             actualizarInterfazSesion();
             if (favoritosControl) favoritosControl.actualizarSesion(usuarioSesion);
         }
-        recuperarSesion();
+
 
         function abrirModalAuth(motivo = '') {
             const mensaje = document.getElementById('login-motivo');
@@ -252,7 +290,17 @@
             document.getElementById('modal-auth').classList.remove('hidden');
             document.getElementById('login-email').focus();
         }
-        function cerrarModalAuth() { document.getElementById('modal-auth').classList.add('hidden'); }
+        function cerrarModalAuth() { document.getElementById('modal-auth').classList.add('hidden'); document.getElementById('btn-cuenta-header').focus(); }
+        document.addEventListener('keydown', event => {
+            const modal = document.getElementById('modal-auth');
+            if (modal.classList.contains('hidden')) return;
+            if (event.key === 'Escape') { cerrarModalAuth(); return; }
+            if (event.key !== 'Tab') return;
+            const nodes = [...modal.querySelectorAll('button,input,select,a[href]')].filter(node => !node.disabled && node.getClientRects().length);
+            const first = nodes[0], last = nodes[nodes.length - 1];
+            if (event.shiftKey && document.activeElement === first) { event.preventDefault(); last.focus(); }
+            else if (!event.shiftKey && document.activeElement === last) { event.preventDefault(); first.focus(); }
+        });
         
         function alternarAuth(vista) {
             document.getElementById('form-login').classList.toggle('hidden', vista !== 'login');
@@ -284,6 +332,7 @@
                     return;
                 }
                 document.getElementById('login-password').value = '';
+                if (window.BSRedOffline) BSRedOffline.cancelarCierrePendiente();
                 window.location.href = '/usuario';
             } catch (_) {
                 error.textContent = 'No se pudo conectar. Inténtalo nuevamente.';
@@ -351,66 +400,103 @@
             document.getElementById('btn-reintentar-mapa').classList.toggle('hidden', !['error', 'parcial'].includes(estado.tipo));
         }
 
-        function onBusquedaChange() {
-            clearTimeout(esperaBusqueda);
-            versionHorarios++;
-            if (solicitudHorarios) solicitudHorarios.abort();
-            if (mapaRutas) mapaRutas.limpiar();
-            datosHorarios = [];
-            itemSeleccionadoIndex = null;
-            estadosRutas.clear();
-            renderizarLista(true);
-            mostrarEstadoMapa({ tipo: 'cargando', texto: 'Buscando horarios...' });
-            esperaBusqueda = setTimeout(cargarDatosAPI, 250);
+        function normalizar(texto) { return String(texto || '').normalize('NFD').replace(/[\u0300-\u036f]/g, '').toLowerCase(); }
+        function fechaChile() { return new Intl.DateTimeFormat('en-CA', { timeZone: 'America/Santiago', year: 'numeric', month: '2-digit', day: '2-digit' }).format(new Date()); }
+        function onBusquedaChange() { clearTimeout(esperaBusqueda); esperaBusqueda = setTimeout(aplicarFiltros, 180); }
+        function poblarFiltros() {
+            for (const [id, campo] of [['filtro-empresa', 'empresa'], ['filtro-destino', 'destino']]) {
+                const selector = document.getElementById(id), anterior = selector.value;
+                selector.replaceChildren(new Option(campo === 'empresa' ? 'Todas' : 'Todos', ''));
+                [...new Set(horariosBase.map(row => String(row[campo] || '')).filter(Boolean))].sort((a,b) => a.localeCompare(b, 'es')).forEach(valor => selector.add(new Option(valor, valor)));
+                selector.value = [...selector.options].some(opcion => opcion.value === anterior) ? anterior : '';
+            }
         }
-
+        function aplicarFiltros(forzarMapa = false) {
+            const favoritos = new Set(favoritosControl && favoritosControl.ids ? favoritosControl.ids().map(Number) : []);
+            const query = normalizar(document.getElementById('busqueda').value.trim());
+            const empresa = document.getElementById('filtro-empresa').value, destino = document.getElementById('filtro-destino').value;
+            const sentido = document.getElementById('filtro-sentido').value, desde = document.getElementById('filtro-desde').value, hasta = document.getElementById('filtro-hasta').value;
+            const soloFavoritos = document.getElementById('filtro-favoritos').checked, soloGPS = document.getElementById('filtro-gps').checked;
+            const seleccion = itemSeleccionadoIndex == null ? null : datosHorarios[itemSeleccionadoIndex]?.id;
+            const anteriores = datosHorarios.map(row => row.id).join(',');
+            datosHorarios = horariosBase.filter(row => {
+                const hora = String((currentTab === 'salidas' ? row.salida : row.llegada) || '').slice(0, 5);
+                return (!query || normalizar([row.empresa,row.origen,row.destino,row.anden].join(' ')).includes(query))
+                    && (!empresa || row.empresa === empresa) && (!destino || row.destino === destino) && (!sentido || row.sentido === sentido)
+                    && ((!desde && !hasta) || (hora && (desde && hasta && desde > hasta ? hora >= desde || hora <= hasta : (!desde || hora >= desde) && (!hasta || hora <= hasta))))
+                    && (!soloFavoritos || favoritos.has(Number(row.id))) && (!soloGPS || (!horariosGuardados && gpsConectados.has(Number(row.id))));
+            });
+            const index = datosHorarios.findIndex(row => row.id === seleccion); itemSeleccionadoIndex = index < 0 ? null : index;
+            renderizarLista();
+            if (mapaRutas && (forzarMapa === true || anteriores !== datosHorarios.map(row => row.id).join(','))) {
+                mapaRutas.mostrar(datosHorarios, { tab: currentTab });
+                if (itemSeleccionadoIndex != null) mapaRutas.seleccionar(datosHorarios[itemSeleccionadoIndex].id);
+            }
+        }
+        function limpiarFiltros() {
+            for (const id of ['busqueda','filtro-empresa','filtro-destino','filtro-sentido','filtro-desde','filtro-hasta']) document.getElementById(id).value = '';
+            document.getElementById('filtro-favoritos').checked = false; document.getElementById('filtro-gps').checked = false; aplicarFiltros();
+        }
         async function cargarDatosAPI() {
             const version = ++versionHorarios;
             if (solicitudHorarios) solicitudHorarios.abort();
-            const controlador = new AbortController();
-            solicitudHorarios = controlador;
-            if (mapaRutas) mapaRutas.limpiar();
-            datosHorarios = [];
-            itemSeleccionadoIndex = null;
-            estadosRutas.clear();
-            renderizarLista(true);
-            mostrarEstadoMapa({ tipo: 'cargando', texto: 'Obteniendo horarios...' });
-            const query = document.getElementById('busqueda').value.trim();
+            const controlador = new AbortController(); solicitudHorarios = controlador;
+            const tab = currentTab, fecha = document.getElementById('filtro-fecha').value || fechaChile();
+            const estado = document.getElementById('horarios-actualizacion');
             let tiempoLimite;
-            const vencimiento = new Promise((_, fallo) => {
-                tiempoLimite = setTimeout(() => { controlador.abort(); fallo(new Error('timeout')); }, 10000);
-                controlador.signal.addEventListener('abort', () => fallo(new Error('cancelada')), { once: true });
-            });
             try {
-                const solicitud = (async () => {
-                    const res = await fetch(`/api/horarios?tab=${currentTab}&q=${encodeURIComponent(query)}`, {
-                        signal: controlador.signal, credentials: 'same-origin', cache: 'no-store'
-                    });
-                    const datos = await res.json();
-                    if (!res.ok || !Array.isArray(datos)) throw new Error('horarios');
-                    return datos;
-                })();
-                const datos = await Promise.race([solicitud, vencimiento]);
+                estado.textContent = 'Cargando horarios...';
+                if (navigator.onLine === false) throw new Error('offline');
+                tiempoLimite = setTimeout(() => controlador.abort(), 12000);
+                const res = await fetch(`/api/horarios?tab=${tab}&fecha=${encodeURIComponent(fecha)}`, { signal: controlador.signal, credentials: 'same-origin', cache: 'no-store' });
+                const datos = await res.json(); if (!res.ok || !Array.isArray(datos)) throw new Error('horarios');
                 if (version !== versionHorarios) return;
-                datosHorarios = datos;
-                renderizarLista();
-                if (mapaRutas) mapaRutas.mostrar(datosHorarios, { tab: currentTab });
-                else mostrarEstadoMapa({ tipo: 'error', texto: 'Mapa no disponible; consulta los horarios en el panel' });
-                if (Number.isInteger(recorridoPendiente) && recorridoPendiente > 0) {
-                    const indice = datosHorarios.findIndex(item => Number(item.id) === recorridoPendiente);
-                    recorridoPendiente = null;
-                    if (indice >= 0) seleccionarHorario(indice);
-                    else document.getElementById('favoritos-mapa-estado').textContent = 'El recorrido del aviso ya no está disponible en esta lista.';
-                }
+                horariosBase = datos; horariosGuardados = false;
+                if (window.BSRedOffline) BSRedOffline.guardarHorarios(tab, datos, fecha);
+                estado.textContent = `Horarios para ${fecha} · Actualizados a las ${new Date().toLocaleTimeString('es-CL', { timeZone: 'America/Santiago' })} (Chile).`;
             } catch (_) {
                 if (version !== versionHorarios) return;
-                renderizarLista(false, 'No se pudieron cargar los horarios. Inténtalo nuevamente.');
-                mostrarEstadoMapa({ tipo: 'error', texto: 'No se pudieron cargar los horarios' });
+                const cache = window.BSRedOffline ? BSRedOffline.leerHorarios(tab, fecha) : null;
+                horariosBase = cache ? cache.horarios : []; horariosGuardados = true; gpsConectados = new Set();
+                estado.textContent = cache ? `Sin actualización · Horarios para ${fecha}, guardados el ${BSRedOffline.fecha(cache.actualizado_en)} (Chile). Confirma antes de viajar.`
+                    : 'No hay horarios guardados para esta fecha. Conéctate y pulsa Reintentar.';
+                if (!cache) mostrarEstadoMapa({ tipo: 'error', texto: 'Horarios no disponibles; requiere conexión' });
             } finally {
-                clearTimeout(tiempoLimite);
-                if (solicitudHorarios === controlador) solicitudHorarios = null;
+                clearTimeout(tiempoLimite); if (solicitudHorarios === controlador) solicitudHorarios = null;
+            }
+            if (version !== versionHorarios) return;
+            poblarFiltros(); aplicarFiltros(true);
+            if (Number.isInteger(recorridoPendiente) && recorridoPendiente > 0) {
+                const indice = datosHorarios.findIndex(item => Number(item.id) === recorridoPendiente); recorridoPendiente = null;
+                if (indice >= 0) seleccionarHorario(indice);
+                else document.getElementById('favoritos-mapa-estado').textContent = 'El recorrido del aviso ya no está disponible en esta lista.';
             }
         }
+        async function cargarAvisos() {
+            const box = document.getElementById('avisos-publicos');
+            if (navigator.onLine === false) { box.replaceChildren(crearTexto('p','text-xs text-amber-300','Avisos operativos sin actualizar por falta de conexión.')); return; }
+            try {
+                const result = await solicitarAPI('/api/avisos'); if (!result.ok) throw new Error('avisos');
+                const rows = Array.isArray(result.data) ? result.data : result.data.avisos || [];
+                box.replaceChildren();
+                for (const notice of rows) {
+                    const card = crearTexto('article', 'aviso-operativo', '');
+                    card.append(crearTexto('strong', '', `${notice.tipo === 'cancelacion' ? 'Cancelación' : notice.tipo === 'retraso' ? 'Retraso' : 'Aviso'}${notice.demora_min ? ' · ' + notice.demora_min + ' min' : ''}`),
+                        crearTexto('p', '', `Fecha del servicio: ${notice.fecha || 'no informada'}${notice.empresa ? ' · ' + notice.empresa : ''}`),
+                        crearTexto('p', '', `${notice.origen || ''}${notice.destino ? ' → ' + notice.destino : ''} ${notice.mensaje || ''}`)); box.append(card);
+                }
+            } catch (_) { box.replaceChildren(crearTexto('p', 'text-xs text-amber-300', 'No se pudieron actualizar los avisos operativos.')); }
+        }
+        document.addEventListener('bsred:gps-actualizado', event => {
+            const siguientes = new Set((event.detail && event.detail.horario_ids || []).map(Number));
+            if (siguientes.size === gpsConectados.size && [...siguientes].every(id => gpsConectados.has(id))) return;
+            gpsConectados = siguientes;
+            if (document.getElementById('filtro-gps').checked) aplicarFiltros();
+        });
+        window.addEventListener('online', () => { recuperarSesion(); cargarDatosAPI(); cargarAvisos(); });
+        window.addEventListener('offline', () => { document.getElementById('filtro-gps').checked = false; cargarDatosAPI(); cargarAvisos(); });
+        document.addEventListener('visibilitychange', () => { if (document.visibilityState === 'visible') cargarAvisos(); });
+        setInterval(() => { if (document.visibilityState === 'visible' && navigator.onLine !== false) cargarAvisos(); }, 30000);
 
         function cambiarTab(tab) {
             if (currentTab === tab) return;
@@ -460,7 +546,9 @@
                     datoEstado ? datoEstado.texto : (mapaRutas ? 'Buscando trazado...' : 'Mapa no disponible'));
                 estado.id = `estado-ruta-${item.id}`;
                 estado.title = datoEstado ? datoEstado.nota_itinerario || datoEstado.texto : '';
-                detalle.append(cabecera, crearTexto('p', 'text-xs text-slate-300', `${item.origen || ''} → ${item.destino || ''}`), estado);
+                detalle.append(cabecera, crearTexto('p', 'text-xs text-slate-300', `${item.origen || ''} → ${item.destino || ''}`),
+                    crearTexto('p', 'text-xs text-slate-300', `${item.sentido === 'vuelta' ? 'Vuelta' : 'Ida'}${item.precio != null ? ' · $' + Number(item.precio).toLocaleString('es-CL') : ''} · ${item.dias || 'Días sin informar'}`), estado);
+                if (Array.isArray(item.paradas) && item.paradas.length) detalle.append(crearTexto('p', 'text-xs text-slate-300', 'Paradas: ' + item.paradas.map(parada => `${parada.nombre}${parada.confirmada ? ' (confirmada)' : ' (sin confirmar)'}`).join(' → ')));
                 const hora = crearTexto('div', 'text-right pl-2 shrink-0', '');
                 hora.append(crearTexto('span', 'text-xs text-slate-400 block', currentTab === 'salidas' ? 'Salida' : 'Llegada'),
                     crearTexto('span', 'text-xl font-black text-white font-mono', (currentTab === 'salidas' ? item.salida : item.llegada) || '—'));
@@ -488,7 +576,7 @@
                 usuario: usuarioSesion,
                 solicitarLogin: () => abrirModalAuth('Inicia sesión para guardar este recorrido y recibir avisos de salida.'),
                 estado: document.getElementById('favoritos-mapa-estado'),
-                onCambio: () => renderizarLista(),
+                onCambio: () => aplicarFiltros(),
                 onSesionVencida: () => {
                     usuarioSesion = null;
                     actualizarInterfazSesion();
@@ -498,7 +586,8 @@
         }
 
         function iniciarMapaRutas() {
-            iniciarFavoritosMapa();
+            document.getElementById('filtro-fecha').value = fechaChile();
+            recuperarSesion(); iniciarFavoritosMapa(); cargarAvisos();
             if (map && window.BSRedMapaRutas) {
                 mapaRutas = window.BSRedMapaRutas.crear({
                     map, L, onEstado: mostrarEstadoMapa,

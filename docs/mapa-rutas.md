@@ -1,16 +1,20 @@
 # Recorridos y ubicación estimada
 
 El mapa usa geometría vial de OpenStreetMap a través de OSRM. Ya no une el
-origen y el destino con una línea recta. Las coordenadas representan centros
-de localidades, no terminales ni paradas exactas. OSRM propone una ruta para
+origen y el destino con una línea recta. Cuando no hay paradas confirmadas,
+las coordenadas representan centros de localidades. Si una empresa configura
+un itinerario con dos o más paradas activas confirmadas por administración,
+se consulta la carretera entre esas coordenadas en el orden registrado para
+ese sentido. OSRM propone una ruta para
 vehículos por carretera; esa propuesta no verifica por sí sola el itinerario
 comercial de un bus ni restricciones específicas de circulación de buses.
 
 Los horarios con un solo destino se muestran como tales. Un texto que agrupa
 localidades con `/` no permite saber si son paradas sucesivas o servicios
 independientes. Sin una fuente del operador, esos horarios conservan su texto
-y muestran el motivo por el que su trazado no está confirmado. No se cambia
-la base de datos ni se crea una posición para esos servicios.
+y muestran el motivo por el que su trazado no está confirmado. No se deducen
+paradas sucesivas del texto; la empresa puede registrar el itinerario mediante
+[la gestión de operación](operaciones.md).
 
 Las localidades se contrastaron con OpenStreetMap/Nominatim. La información
 turística municipal de [Siete Lagos](https://sietelagos.cl/) confirma conexiones
@@ -20,8 +24,19 @@ de paradas de los horarios agrupados existentes.
 
 ## Posición del bus
 
-La base actual no almacena coordenadas GPS. Durante una ventana de salida y
-llegada válida, el marcador muestra **Ubicación estimada por horario**: avanza
+Los viajes activos publican GPS real reciente mediante
+`GET /api/mapa/posiciones`. El mapa oculta puntos de más de dos minutos y nunca
+reemplaza un viaje activo sin señal por una posición programada. Las paradas
+confirmadas incluyen nombre y accesibilidad; cada horario indica su sentido.
+
+Cuando hay muestras recientes de movimiento con precisión suficiente y un
+trazado vial ya disponible en caché, se calcula la distancia restante y una
+ETA aproximada. Se retira con señal antigua, poca precisión, velocidad
+insuficiente o desvío importante del recorrido. La ETA no contempla tráfico.
+El sondeo GPS no inicia peticiones nuevas a OSRM.
+
+Para recorridos sin viaje activo, durante una ventana de salida y
+llegada válida el marcador muestra **Ubicación estimada por horario**: avanza
 a velocidad uniforme por la distancia del trazado. No incluye retrasos,
 detenciones, tráfico ni cancelaciones. Fuera del viaje programado se retira
 el marcador. Las horas y los días se interpretan en `America/Santiago`, con
@@ -35,7 +50,8 @@ horario correspondiente; una respuesta anterior no reemplaza nuevos filtros.
 ## Servidor y disponibilidad
 
 `GET /api/mapa/ruta/<id>` devuelve GeoJSON, distancia, fuente, localidades,
-ventanas UTC y reloj del servidor. Sólo lee horarios; no agrega consultas a
+ventanas UTC, paradas confirmadas, sentido y reloj del servidor. Las ventanas
+respetan las excepciones de cada fecha. Sólo lee horarios; no agrega consultas a
 la telemetría. Un itinerario sin definir devuelve 422, uno inexistente 404 y
 una indisponibilidad de carreteras 503. Los horarios siguen visibles si falla
 el mapa.
@@ -52,7 +68,11 @@ por una instancia propia revisando `ROUTER_URL`.
 
 ## Confirmar itinerarios agrupados
 
-`VERIFIED_ITINERARIES` en `rutas.py` admite origen, destino final, localidades
+La empresa puede ordenar sus paradas en el panel de Horarios. Sólo se emplea
+ese itinerario cuando todas sus paradas están activas y confirmadas. Editar una
+parada reinicia su confirmación; no se agregaron paradas inventadas.
+
+Para los recorridos anteriores, `VERIFIED_ITINERARIES` en `rutas.py` admite origen, destino final, localidades
 intermedias ordenadas, tipo de recorrido y nota de procedencia. Incorporar
 sólo itinerarios confirmados por una fuente del servicio correspondiente.
 No basta el orden de las palabras en el horario ni la cercanía geográfica.

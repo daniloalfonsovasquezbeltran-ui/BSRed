@@ -11,7 +11,12 @@
     <!-- Tailwind CSS -->
     <script src="/telemetria.js" defer></script>
     <script src="/favoritos.js" defer></script>
-    <script src="https://cdn.tailwindcss.com"></script>
+    <link rel="stylesheet" href="/styles.css">
+    <script src="/offline.js" defer></script>
+    <script src="/accesibilidad.js" defer></script>
+    <script src="/cuentas.js" defer></script>
+    <script src="/operaciones.js" defer></script>
+    <script src="/nativo-notificaciones.js" defer></script>
     <style>
         .custom-scrollbar::-webkit-scrollbar { width: 6px; }
         .custom-scrollbar::-webkit-scrollbar-thumb { background: #334155; border-radius: 4px; }
@@ -19,6 +24,7 @@
 </head>
 <body class="bg-slate-950 text-slate-100 font-sans min-h-screen flex flex-col md:flex-row antialiased">
 
+    <a href="#contenido-panel" class="skip-link">Saltar al contenido del panel</a>
     <!-- BARRA LATERAL -->
     <aside class="w-full md:w-64 bg-slate-900 border-r border-slate-800 flex flex-col justify-between z-20 shrink-0">
         <div>
@@ -47,6 +53,7 @@
                 <button onclick="cambiarSeccion('notificaciones')" id="nav-notificaciones" class="w-full flex items-center gap-3 px-4 py-3 rounded-xl text-slate-400 hover:bg-slate-800 hover:text-white transition">
                     <span>🔔</span> <span>Notificaciones</span>
                 </button>
+                <button onclick="cambiarSeccion('cuenta')" id="nav-cuenta" class="w-full flex items-center gap-3 px-4 py-3 rounded-xl text-slate-300 hover:bg-slate-800 transition"><span aria-hidden="true">🔐</span> <span>Mi cuenta</span></button>
                 <button onclick="window.location.href='/'" class="w-full flex items-center gap-3 px-4 py-3 rounded-xl text-slate-400 hover:bg-slate-800 hover:text-white transition">
                     <span>🗺️</span> <span>Ver Mapa General</span>
                 </button>
@@ -62,7 +69,7 @@
     </aside>
 
     <!-- ÁREA PRINCIPAL -->
-    <main class="flex-1 p-4 md:p-8 overflow-y-auto custom-scrollbar">
+    <main id="contenido-panel" tabindex="-1" class="flex-1 p-4 md:p-8 overflow-y-auto custom-scrollbar">
 
         <!-- Header Superior -->
         <header class="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4 mb-6">
@@ -74,9 +81,12 @@
                 📅 <span id="fecha-actual"></span>
             </div>
         </header>
+        <div class="op-actions mb-4"><div data-accesibilidad></div><p data-estado-conexion class="text-sm text-slate-300" role="status"></p></div>
         <p id="session-status" class="mb-2 text-sm text-slate-400" role="status">Verificando sesión...</p>
         <button id="session-reintentar" onclick="iniciarPanel()" class="hidden mb-6 text-sm text-blue-400 underline">Reintentar conexión</button>
 
+        <section id="panel-cuenta" class="hidden space-y-5 max-w-3xl"><div id="cuentas-panel"></div></section>
+        <section id="panel-operaciones" class="hidden space-y-5"><div id="operaciones-panel"></div></section>
         <!-- ================================================================= -->
         <!-- 1. PANEL ADMINISTRADOR                                           -->
         <!-- ================================================================= -->
@@ -215,10 +225,12 @@
             <div class="bg-slate-900 border border-slate-800 rounded-2xl p-6 space-y-5">
                 <h3 class="text-xl font-bold">Consola de conductor</h3>
                 <p class="text-sm text-slate-400">Elige el recorrido y el bus. Al iniciar el viaje se comparte la ubicación; al finalizar se detiene. La app Android puede mantener el GPS con la pantalla apagada.</p>
+                <p id="chofer-restricciones" role="status" aria-live="polite" class="text-sm text-amber-300"></p>
+                <div id="chofer-diagnostico" role="status" aria-live="polite" class="text-sm text-slate-300"></div>
                 <p id="chofer-estado" role="status" aria-live="polite" class="text-sm"></p>
                 <form id="form-iniciar-viaje" class="space-y-4">
                     <label class="block text-sm">Recorrido<select id="chofer-recorrido" required class="block w-full p-3 mt-1 bg-slate-800 rounded-xl"></select></label>
-                    <label class="block text-sm">Patente del bus<input id="chofer-patente" required minlength="4" maxlength="12" class="block w-full p-3 mt-1 bg-slate-800 rounded-xl" placeholder="Ej. ABCD12"></label>
+                    <label class="block text-sm">Bus registrado de tu empresa<select id="chofer-bus" required class="block w-full p-3 mt-1 bg-slate-800 rounded-xl"><option value="">Selecciona un bus</option></select></label>
                     <button id="chofer-iniciar" type="submit" class="w-full p-4 bg-emerald-600 rounded-xl font-bold">Iniciar viaje y activar ubicación</button>
                 </form>
                 <p id="chofer-viaje" class="text-sm"></p>
@@ -257,13 +269,14 @@
                 <h2 class="font-bold text-xl text-white">Avisos en este dispositivo</h2>
                 <p class="text-sm text-slate-400">Recibe una notificación antes de la salida programada de tus favoritos desde el terminal de Panguipulli, incluso con la página cerrada.</p>
                 <div id="avisos-dispositivo"></div>
+                <div id="avisos-android"></div>
                 <p class="text-xs text-slate-500">Los avisos necesitan conexión y permiso de notificaciones. La entrega puede depender del navegador y del ahorro de batería del dispositivo; no confirma la salida real del bus.</p>
             </div>
         </section>
     </main>
 
     <!-- CONTROLADORES JAVASCRIPT -->
-    <script src="/choferes.js"></script>
+    <script src="/choferes.js" defer></script>
     <script>
         document.getElementById('fecha-actual').innerText = new Date().toLocaleDateString('es-CL', {
             weekday: 'long', year: 'numeric', month: 'long', day: 'numeric', timeZone: 'America/Santiago'
@@ -272,6 +285,7 @@
         let usuarioSesion = null;
         let favoritosControl = null;
         let seccionActual = 'dashboard';
+        let avisoCierrePendiente = '';
         let intervaloTelemetria = null;
         let telemetriaEnCurso = false;
         let ultimaActualizacion = null;
@@ -301,13 +315,24 @@
         }
 
         function ocultarPaneles() {
-            ['admin', 'empresa', 'chofer', 'pasajero', 'favoritos', 'notificaciones'].forEach(rol => {
+            ['admin', 'empresa', 'chofer', 'pasajero', 'favoritos', 'notificaciones', 'cuenta', 'operaciones'].forEach(rol => {
                 document.getElementById(`panel-${rol}`).classList.add('hidden');
             });
         }
 
         async function iniciarPanel() {
+            if (window.BSRedCuentas && BSRedCuentas.procesarRestablecimiento()) {
+                ocultarPaneles(); document.getElementById('panel-cuenta').classList.remove('hidden');
+                document.getElementById('session-status').textContent = 'Recuperación de cuenta';
+                return;
+            }
             const estado = document.getElementById('session-status');
+            if (window.BSRedOffline) {
+                const cierre = await BSRedOffline.reconciliarCierre();
+                if (cierre.cerrado) { window.location.replace('/'); return; }
+                avisoCierrePendiente = cierre.viaje_activo ? cierre.mensaje : '';
+                if (cierre.pendiente && !cierre.viaje_activo) { ocultarPaneles(); estado.textContent = cierre.mensaje || 'El cierre de sesión está pendiente de conexión. Tus favoritos locales se eliminaron.'; estado.classList.remove('hidden'); return; }
+            }
             const reintentar = document.getElementById('session-reintentar');
             estado.textContent = 'Verificando sesión...';
             estado.classList.remove('hidden');
@@ -319,13 +344,24 @@
             try {
                 const res = await solicitarAPI('/api/sesion');
                 if (res.status === 401) {
+                    if (window.BSRedOffline) BSRedOffline.limpiarSesion();
                     window.location.replace('/');
                     return;
                 }
                 const data = res.data;
                 if (!res.ok || !data.success || !data.user) throw new Error('sesion');
                 usuarioSesion = data.user;
+                if (window.BSRedOffline) BSRedOffline.sesion(usuarioSesion);
             } catch (_) {
+                const cacheUser = window.BSRedOffline ? BSRedOffline.usuario() : null;
+                if (cacheUser) {
+                    usuarioSesion = cacheUser;
+                    document.getElementById('user-display-name').textContent = cacheUser.nombre;
+                    document.getElementById('user-role-badge').textContent = 'CONSULTA SIN CONEXIÓN';
+                    estado.textContent = 'Cuenta sin verificar en línea. Solo puedes consultar tus favoritos guardados; las operaciones requieren conexión.';
+                    if (favoritosControl) favoritosControl.actualizarSesion(cacheUser);
+                    cambiarSeccion('favoritos'); return;
+                }
                 estado.textContent = 'No se pudo verificar tu sesión. Revisa la conexión e inténtalo nuevamente.';
                 reintentar.classList.remove('hidden');
                 return;
@@ -336,6 +372,13 @@
             document.getElementById('user-role-badge').textContent = (usuarioSesion.rol || 'pasajero').toUpperCase();
 
             if (favoritosControl) favoritosControl.actualizarSesion(usuarioSesion);
+            if (window.BSRedCuentas) BSRedCuentas.iniciar(usuarioSesion);
+            if (window.BSRedNotificacionesAndroid) BSRedNotificacionesAndroid.iniciar(usuarioSesion);
+            if (usuarioSesion.requiere_cambio_password === true) {
+                estado.textContent = 'Cambia tu contraseña inicial antes de acceder a las operaciones de tu cuenta.';
+                estado.classList.remove('hidden'); cambiarSeccion('cuenta'); return;
+            }
+            if (window.BSRedOperaciones) BSRedOperaciones.iniciar(usuarioSesion);
             const rol = (usuarioSesion.rol || '').toLowerCase();
             if (rol === 'admin') {
                 document.getElementById('panel-admin').classList.remove('hidden');
@@ -357,17 +400,21 @@
             const seccionInicial = window.location.hash === '#favoritos' ? 'favoritos'
                 : window.location.hash === '#notificaciones' ? 'notificaciones' : seccionActual;
             cambiarSeccion(seccionInicial);
+            if (avisoCierrePendiente) { estado.textContent = avisoCierrePendiente; estado.classList.remove('hidden'); }
         }
 
         function cambiarSeccion(seccion) {
             if (!usuarioSesion) return;
-            seccionActual = ['favoritos', 'notificaciones', 'actividad'].includes(seccion) ? seccion : 'dashboard';
+            seccionActual = ['favoritos', 'notificaciones', 'actividad', 'cuenta'].includes(seccion) ? seccion : 'dashboard';
+            if (usuarioSesion.requiere_cambio_password === true) seccionActual = 'cuenta';
+            if (usuarioSesion.offline) seccionActual = 'favoritos';
             ocultarPaneles();
             const rol = ['admin', 'empresa', 'chofer'].includes((usuarioSesion.rol || '').toLowerCase())
                 ? usuarioSesion.rol.toLowerCase() : 'pasajero';
-            const panel = ['favoritos', 'notificaciones'].includes(seccionActual) ? seccionActual : rol;
+            const panel = ['favoritos', 'notificaciones', 'cuenta'].includes(seccionActual) ? seccionActual
+                : seccionActual === 'actividad' && ['empresa','admin','chofer'].includes(rol) ? 'operaciones' : rol;
             document.getElementById(`panel-${panel}`).classList.remove('hidden');
-            ['dashboard', 'actividad', 'favoritos', 'notificaciones'].forEach(nombre => {
+            ['dashboard', 'actividad', 'favoritos', 'notificaciones', 'cuenta'].forEach(nombre => {
                 const activo = nombre === seccionActual;
                 document.getElementById(`nav-${nombre}`).className = `w-full flex items-center gap-3 px-4 py-3 rounded-xl transition ${activo
                     ? 'bg-blue-600 text-white font-semibold shadow-lg shadow-blue-600/20'
@@ -481,13 +528,32 @@
         window.addEventListener('offline', cargarTelemetriaReal);
 
         // ==========================================
+        function tieneViajeActivo() {
+            return Boolean(window.BSRedChoferes && typeof BSRedChoferes.viajeActivo === 'function' && BSRedChoferes.viajeActivo())
+                || !document.getElementById('chofer-finalizar').hidden;
+        }
         async function cerrarSesion() {
             const boton = document.getElementById('btn-cerrar-sesion');
             boton.disabled = true;
+            if (navigator.onLine === false) {
+                const estado = document.getElementById('session-status');
+                if (tieneViajeActivo()) {
+                    estado.textContent = 'Tienes un viaje activo. Finalízalo antes de cerrar sesión; el cierre requiere conexión. El control para finalizar sigue disponible.';
+                    estado.classList.remove('hidden'); cambiarSeccion('dashboard'); boton.disabled = false; return;
+                }
+                if (window.BSRedOffline) BSRedOffline.marcarCierrePendiente();
+                if (favoritosControl) favoritosControl.actualizarSesion(null);
+                usuarioSesion = null; ocultarPaneles(); clearInterval(intervaloTelemetria);
+                estado.textContent = 'Se eliminaron tus favoritos de este dispositivo. El cierre de la sesión del servidor queda pendiente y se reintentará al recuperar internet.';
+                estado.classList.remove('hidden'); boton.disabled = false; return;
+            }
             try {
                 const res = await solicitarAPI('/api/logout', { method: 'POST' });
                 if (!res.ok) throw new Error(res.data?.message || 'No se pudo cerrar la sesión.');
                 usuarioSesion = null;
+                if (window.BSRedNotificacionesAndroid) BSRedNotificacionesAndroid.iniciar(null);
+                if (window.BSRedAndroid && typeof window.BSRedNativeCall === 'function') BSRedNativeCall('detener', {}, 12000).catch(() => {});
+                if (window.BSRedOffline) BSRedOffline.limpiarSesion();
                 if (favoritosControl) {
                     favoritosControl.actualizarSesion(null);
                     await favoritosControl.desvincularNavegador();
@@ -501,7 +567,36 @@
             }
         }
 
-        iniciarPanel();
+        window.addEventListener('bsred:sesion-actualizada', event => {
+            const updated = event.detail && event.detail.user;
+            if (!updated) return;
+            usuarioSesion = updated;
+            if (window.BSRedOffline) BSRedOffline.sesion(updated);
+            iniciarPanel();
+        });
+        window.addEventListener('offline', () => {
+            if (!usuarioSesion) return;
+            if (tieneViajeActivo()) { const status = document.getElementById('session-status'); status.textContent = 'Sin conexión: tu viaje sigue activo. Mantén disponible el control para finalizar y reintenta al recuperar internet.'; status.classList.remove('hidden'); cambiarSeccion('dashboard'); return; }
+            const saved = window.BSRedOffline ? BSRedOffline.usuario() : null;
+            ocultarPaneles(); clearInterval(intervaloTelemetria);
+            if (window.BSRedOperaciones) BSRedOperaciones.iniciar(null);
+            if (window.BSRedCuentas) BSRedCuentas.iniciar(null);
+            if (saved) { usuarioSesion = saved; cambiarSeccion('favoritos'); }
+            const status = document.getElementById('session-status');
+            status.textContent = 'Sin conexión. Las operaciones y el inicio de viajes requieren internet. Solo puedes consultar favoritos guardados.';
+            status.classList.remove('hidden');
+        });
+        window.addEventListener('online', iniciarPanel);
+        document.addEventListener('bsred:viaje-finalizado', () => { if (window.BSRedOffline && BSRedOffline.cierrePendiente()) iniciarPanel(); });
+        document.addEventListener('bsred:sesion-expirada', () => {
+            usuarioSesion = null; ocultarPaneles(); clearInterval(intervaloTelemetria);
+            if (window.BSRedOffline) BSRedOffline.limpiarSesion();
+            if (favoritosControl) favoritosControl.actualizarSesion(null);
+            document.getElementById('session-status').textContent = 'Tu sesión expiró. Inicia sesión nuevamente desde el mapa.';
+            document.getElementById('session-status').classList.remove('hidden');
+        });
+        if (document.readyState === 'loading') document.addEventListener('DOMContentLoaded', iniciarPanel, { once: true });
+        else iniciarPanel();
     </script>
 </body>
 </html>

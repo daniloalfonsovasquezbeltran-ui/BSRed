@@ -3,23 +3,29 @@ import hashlib
 import re
 import secrets
 import threading
-from datetime import datetime, timezone
+from datetime import date, datetime, timedelta, timezone
 from flask import Flask, request, jsonify, send_file, send_from_directory
 from flask_cors import CORS
 from werkzeug.middleware.proxy_fix import ProxyFix
 import psycopg2
 from psycopg2.extras import RealDictCursor
 from dotenv import load_dotenv
-from rutas import route_definition, route_geometry, schedule_windows, RouteDefinitionError, RoutingUnavailable
+from rutas import (route_definition, route_geometry, schedule_windows, RouteDefinitionError,
+                   RoutingUnavailable, CHILE_TZ, _local_datetime)
 from avisos import run_notification_cycle, start_notification_scheduler
 from favoritos import DEVICE_COOKIE, register_favorites, revoke_device
 from choferes import register_drivers
 from werkzeug.security import check_password_hash, generate_password_hash
+from operaciones import register_operations, operation_day
+from cuentas import register_accounts
+from notificaciones import register_notifications
+from auditoria import record_audit
+from geo import register_geo, schedule_stops, schedule_geometry
 
 load_dotenv()
 
 app = Flask(__name__, static_folder=None)
-app.wsgi_app = ProxyFix(app.wsgi_app, x_proto=1)
+app.wsgi_app = ProxyFix(app.wsgi_app, x_for=1, x_proto=1)
 CORS(app)
 
 DATABASE_URL = os.environ.get("DATABASE_URL")
@@ -61,7 +67,8 @@ def current_user(cur, lock=False):
         if not cur.fetchone():
             return None
     query = """
-        SELECT u.id, u.nombre, u.email, LOWER(TRIM(u.rol)) AS rol, u.empresa_id
+        SELECT u.id, u.nombre, u.email, LOWER(TRIM(u.rol)) AS rol, u.empresa_id,
+               u.requiere_cambio_password, s.expira_en AS sesion_expira_en
         FROM sesiones_web s
         JOIN usuarios u ON u.id = s.usuario_id
         WHERE s.token_hash = %s AND s.expira_en > CURRENT_TIMESTAMP AND u.suspendido=FALSE;
@@ -69,7 +76,10 @@ def current_user(cur, lock=False):
     if lock:
         query = query.rstrip().rstrip(';') + ' FOR UPDATE OF s;'
     cur.execute(query, (session_hash,))
-    return cur.fetchone()
+    user = cur.fetchone()
+    if user and user.get('sesion_expira_en'):
+        user['sesion_expira_en'] = user['sesion_expira_en'].isoformat()
+    return user
 
 
 def set_private_cookie(response, name, value, max_age):
@@ -79,6 +89,8 @@ def set_private_cookie(response, name, value, max_age):
 
 @app.after_request
 def prevent_api_cache(response):
+    response.headers['Referrer-Policy'] = 'no-referrer'
+    response.headers['X-Content-Type-Options'] = 'nosniff'
     if request.path.startswith("/api/"):
         response.headers["Cache-Control"] = "no-store, private"
         response.vary.add("Cookie")
@@ -193,6 +205,9 @@ def public_asset(filename):
     if filename not in {
         'index.html', 'usuario.html', 'manifest.json', 'sw.js', 'telemetria.js', 'mapa-rutas.js', 'favoritos.js',
         'logo.jpg', 'logo_192.png', 'logo_512.png', 'choferes.js'
+        , 'operaciones.js', 'cuentas.js', 'nativo-notificaciones.js', 'accesibilidad.js',
+        'offline.js', 'offline.html', 'styles.css', 'leaflet.js', 'leaflet.css',
+        'marker-icon.png', 'marker-icon-2x.png', 'marker-shadow.png', 'layers.png', 'layers-2x.png'
     }:
         return "Archivo no encontrado", 404
     return send_from_directory(app.root_path, filename)
@@ -204,17 +219,43 @@ def obtener_ruta_mapa(horario_id):
     try:
         conn = get_db_connection()
         with conn.cursor() as cur:
-            cur.execute('SELECT id, origen, destino, salida, llegada, dias FROM horarios WHERE id = %s;', (horario_id,))
+            cur.execute('''SELECT h.id,h.origen,h.destino,h.salida,h.llegada,h.dias,h.sentido
+                FROM horarios h JOIN empresas e ON e.id=h.empresa_id
+                WHERE h.id=%s AND h.activo AND e.estado_validacion='aprobada';''', (horario_id,))
             horario = cur.fetchone()
+            stops, complete = schedule_stops(cur, horario_id) if horario else ([],False)
+            now = datetime.now(timezone.utc)
+            day = now.astimezone(CHILE_TZ).date()
+            service_days=[]
+            if horario:
+                for offset in (-1,0,1):
+                    service_day=day+timedelta(days=offset)
+                    service_days.append((service_day,operation_day(cur,horario_id,service_day,horario['dias'],horario['salida'],horario['llegada'])))
         conn.close()
         conn = None
         if not horario:
             return jsonify({'success': False, 'message': 'Recorrido no encontrado'}), 404
-        definition = route_definition(horario)
-        geometry = route_geometry(definition['origen'], definition['destino'], definition['via'])
-        now = datetime.now(timezone.utc)
-        windows = schedule_windows(horario['salida'], horario['llegada'], horario['dias'], now)
+        if complete:
+            geometry = schedule_geometry(horario,stops,True)
+            definition = {'tipo_recorrido':'paradas_confirmadas','nota_itinerario':'Carretera entre paradas confirmadas, en el orden de este sentido; la llegada sigue siendo estimada.'}
+        else:
+            definition = route_definition(horario)
+            geometry = route_geometry(definition['origen'], definition['destino'], definition['via'])
+        windows = schedule_windows(horario['salida'],horario['llegada'],horario['dias'],now)
+        # Las excepciones se aplican a cada fecha mostrada, no sólo al día UTC.
+        adjusted=[]
+        for service_day,service in service_days:
+            if not service['opera'] or not service['salida'] or not service['llegada']:continue
+            departure=_local_datetime(service_day,service['salida'])
+            arrival_day=service_day+timedelta(days=1 if service['llegada']<service['salida'] else 0)
+            arrival=_local_datetime(arrival_day,service['llegada'])
+            if departure and arrival and arrival>departure:
+                adjusted.append({'salida_en':departure.astimezone(timezone.utc).isoformat(),'llegada_en':arrival.astimezone(timezone.utc).isoformat()})
+        windows['ventanas']=adjusted
+        windows['estimacion_disponible']=bool(adjusted)
+        windows['mensaje_estimacion']=None if adjusted else 'No hay un viaje programado con llegada conocida en estas fechas.'
         return jsonify({'success': True, 'horario_id': horario_id, **geometry, **windows,
+                        'paradas':stops,'itinerario_confirmado':complete,'sentido':horario['sentido'],
                         'servidor_en': now.isoformat(),
                         'tipo_recorrido': definition['tipo_recorrido'],
                         'nota_itinerario': definition['nota_itinerario']})
@@ -235,7 +276,11 @@ def obtener_ruta_mapa(horario_id):
 @app.route('/api/horarios', methods=['GET'])
 def obtener_horarios():
     tab = request.args.get('tab', 'salidas').lower()
-    busqueda = request.args.get('q', '').strip()
+    busqueda = request.args.get('q', '').strip()[:255]
+    try:
+        fecha = date.fromisoformat(request.args['fecha']) if request.args.get('fecha') else datetime.now(CHILE_TZ).date()
+    except ValueError:
+        return jsonify(success=False,message='Fecha inválida.'),400
     
     # Normalizar singular/plural ('salidas' -> 'salida', 'llegadas' -> 'llegada')
     tipo_filtro = 'salida' if 'salida' in tab else 'llegada'
@@ -270,14 +315,13 @@ def obtener_horarios():
                 h.tipo,
                 h.origen,
                 h.destino,
-                TO_CHAR(h.salida, 'HH24:MI') AS salida,
-                TO_CHAR(h.llegada, 'HH24:MI') AS llegada,
+                h.salida,h.llegada,h.empresa_id,h.sentido,h.activo,h.precio,h.actualizado_en,
                 COALESCE(h.anden, '1') AS anden,
                 COALESCE(h.dias, 'Todos los días') AS dias,
                 COALESCE(e.nombre, 'Terminal Panguipulli') AS empresa
             FROM horarios h
-            LEFT JOIN empresas e ON h.empresa_id = e.id
-            WHERE LOWER(h.tipo) LIKE %s
+            JOIN empresas e ON h.empresa_id = e.id
+            WHERE LOWER(h.tipo) LIKE %s AND h.activo AND e.estado_validacion='aprobada'
         """
         params = [f"%{tipo_filtro}%"]
 
@@ -293,12 +337,20 @@ def obtener_horarios():
         sql += " ORDER BY h.salida ASC;"
         cur.execute(sql, tuple(params))
         horarios = cur.fetchall()
+        for h in horarios:
+            service=operation_day(cur,h['id'],fecha,h['dias'],h['salida'],h['llegada'])
+            h['salida']=service['salida'].strftime('%H:%M') if service['salida'] else None
+            h['llegada']=service['llegada'].strftime('%H:%M') if service['llegada'] else None
+            h['opera_fecha']=service['opera'];h['motivo_excepcion']=service['motivo']
+            h['fecha_consulta']=fecha.isoformat()
+            h['actualizado_en']=h['actualizado_en'].isoformat() if h['actualizado_en'] else None
+            h['paradas'],h['itinerario_confirmado']=schedule_stops(cur,h['id'])
         cur.close()
 
         return jsonify(horarios), 200
 
     except Exception as e:
-        print(f"Error consultando horarios: {e}")
+        app.logger.error('No se pudieron consultar horarios: %s',type(e).__name__)
         return jsonify([]), 500
     finally:
         if conn:
@@ -425,7 +477,7 @@ def login():
         conn = get_db_connection()
         cur = conn.cursor()
         cur.execute(
-            "SELECT id, nombre, email, LOWER(TRIM(rol)) AS rol, empresa_id, password_hash FROM usuarios WHERE LOWER(TRIM(email)) = %s AND suspendido=FALSE FOR UPDATE;",
+            "SELECT id, nombre, email, LOWER(TRIM(rol)) AS rol, empresa_id, password_hash, requiere_cambio_password FROM usuarios WHERE LOWER(TRIM(email)) = %s AND suspendido=FALSE FOR UPDATE;",
             (email,)
         )
         usuario_db = cur.fetchone()
@@ -448,8 +500,9 @@ def login():
             token = secrets.token_urlsafe(32)
             cur.execute("""
                 INSERT INTO sesiones_web (token_hash, usuario_id, expira_en)
-                VALUES (%s, %s, CURRENT_TIMESTAMP + (%s * INTERVAL '1 second'));
+                VALUES (%s, %s, CURRENT_TIMESTAMP + (%s * INTERVAL '1 second')) RETURNING expira_en;
             """, (token_hash(token), usuario_db['id'], SESSION_SECONDS))
+            usuario_db['sesion_expira_en']=cur.fetchone()['expira_en'].isoformat()
             conn.commit()
             response = jsonify({"success": True, "user": usuario_db})
             set_private_cookie(response, SESSION_COOKIE, token, SESSION_SECONDS)
@@ -487,10 +540,12 @@ def registro():
         cur = conn.cursor()
         empresa_id = None
         if rol == 'empresa':
-            cur.execute('INSERT INTO empresas(nombre) VALUES(%s) RETURNING id;', (nombre,))
+            cur.execute("INSERT INTO empresas(nombre,estado_validacion) VALUES(%s,'pendiente') RETURNING id;", (nombre,))
             empresa_id = cur.fetchone()['id']
-        cur.execute("INSERT INTO usuarios (nombre, email, password, password_hash, rol, empresa_id) VALUES (%s, %s, '', %s, %s, %s);",
+        cur.execute("INSERT INTO usuarios (nombre, email, password, password_hash, rol, empresa_id) VALUES (%s, %s, '', %s, %s, %s) RETURNING id;",
                     (nombre, email, generate_password_hash(password), rol, empresa_id))
+        created_id=cur.fetchone()['id']
+        record_audit(cur,{'id':created_id,'rol':rol,'empresa_id':empresa_id},'cuenta.crear','usuario',created_id)
         conn.commit()
         cur.close()
         return jsonify({"success": True, "message": "Usuario registrado"}), 201
@@ -505,6 +560,10 @@ def registro():
 
 register_favorites(app, get_db_connection, current_user, cookie_token, token_hash, set_private_cookie)
 register_drivers(app, get_db_connection, current_user, token_hash)
+register_operations(app,get_db_connection,current_user,token_hash)
+register_accounts(app,get_db_connection,current_user,token_hash)
+register_notifications(app,get_db_connection,current_user,token_hash)
+register_geo(app,get_db_connection)
 
 _dispatch_lock = threading.Lock()
 _dispatch_thread = None

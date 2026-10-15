@@ -167,7 +167,7 @@ class FavoritesPostgresTests(unittest.TestCase):
                 );
             ''')
             migrations = Path(__file__).resolve().parents[1] / 'migrations'
-            migration_paths = [migrations / '001_telemetria_web.sql', next(migrations.glob('002_*.sql')), migrations / '004_choferes_viajes.sql']
+            migration_paths = [migrations / name for name in ('001_telemetria_web.sql','002_favoritos_avisos.sql','004_choferes_viajes.sql','005_operaciones.sql','006_cuentas.sql','007_notificaciones.sql')]
             for migration_path in migration_paths:
                 migration = migration_path.read_text().replace('public.', 'favoritos_test.')
                 cur.execute(migration)
@@ -193,7 +193,7 @@ class FavoritesPostgresTests(unittest.TestCase):
                     ('Pasajero fixture', 'pasajero@example.invalid', 'fixture-password', 'pasajero'),
                     ('Otra cuenta fixture', 'otra@example.invalid', 'fixture-password', 'pasajero'),
                     ('Admin fixture', 'admin@example.invalid', 'fixture-password', 'admin');
-                INSERT INTO empresas (nombre) VALUES ('Empresa fixture');
+                INSERT INTO empresas (nombre,estado_validacion) VALUES ('Empresa fixture','aprobada');
                 INSERT INTO horarios (tipo, origen, destino, salida, llegada, anden, dias, empresa_id) VALUES
                     ('salida', 'Panguipulli', 'Valdivia', '09:00', '11:00', '1', 'Diario', 1),
                     ('salida', 'Panguipulli', 'Temuco', '09:00', '11:30', '2', 'Domingo', 1),

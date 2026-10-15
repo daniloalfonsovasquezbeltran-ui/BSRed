@@ -1,5 +1,5 @@
 // Service Worker: network-first para HTML y APIs, cache-first para estáticos
-const CACHE = 'bsred-v6';
+const CACHE = 'bsred-v7';
 const ASSETS = [
   '/',
   '/logo.jpg',
@@ -7,7 +7,9 @@ const ASSETS = [
   '/telemetria.js',
   '/mapa-rutas.js',
   '/favoritos.js',
-  '/choferes.js'
+  '/choferes.js', '/usuario', '/offline.html', '/styles.css', '/offline.js', '/accesibilidad.js',
+  '/operaciones.js', '/cuentas.js', '/nativo-notificaciones.js', '/leaflet.js', '/leaflet.css',
+  '/marker-icon.png', '/marker-icon-2x.png', '/marker-shadow.png', '/layers.png', '/layers-2x.png', '/manifest.json'
 ];
 
 self.addEventListener('install', e => {
@@ -26,6 +28,7 @@ self.addEventListener('activate', e => {
 
 self.addEventListener('fetch', e => {
   const url = new URL(e.request.url);
+  if(url.origin!==self.location.origin)return;
 
   // Las escrituras se envían directamente, sin consultar el caché.
   if (e.request.method !== 'GET') {
@@ -44,10 +47,10 @@ self.addEventListener('fetch', e => {
       fetch(e.request).then(res => {
         if (res.ok) {
           const copy = res.clone();
-          caches.open(CACHE).then(c => c.put(e.request, copy));
+          if(!url.searchParams.has('restablecer'))caches.open(CACHE).then(c => c.put(url.pathname, copy));
         }
         return res;
-      }).catch(() => caches.match(e.request))
+      }).catch(async () => (await caches.match(url.pathname)) || (await caches.match('/offline.html')))
     );
     return;
   }
@@ -100,20 +103,28 @@ self.addEventListener('push', event => {
     // Un mensaje inválido nunca se interpreta como HTML o código.
   }
 
+  const operational=['retraso','cancelacion','informacion'].includes(payload.tipo);
+  const expiry=departureTime(payload.expira_en);
+  if(operational && (expiry===null || expiry<=Date.now()))return;
+  if(expiry!==null && expiry<=Date.now())return;
   const departure = departureTime(payload.salida_en);
   // Un dispositivo que estuvo sin conexión no recibe un aviso de una salida pasada.
-  if (departure !== null && departure <= Date.now()) return;
+  if (!operational && departure !== null && departure <= Date.now()) return;
 
   const id = routeId(payload.horario_id);
   const url = id === null ? '/' : notificationUrl(payload.url, id);
   const validDeparture = id !== null && departure !== null && url !== '/';
-  const titleText = validDeparture ? notificationText(payload.title, 100) : 'BSRed';
-  const title = titleText.toLocaleLowerCase('es').includes('salida programada')
+  const eventId=typeof payload.event_id==='string' && /^[A-Za-z0-9:_-]{1,160}$/.test(payload.event_id) ? payload.event_id : null;
+  const validOperational=operational && id!==null && url!=='/' && eventId!==null && expiry!==null;
+  if(operational && !validOperational)return;
+  const valid=validDeparture || validOperational;
+  const titleText = valid ? notificationText(payload.title, 100) : 'BSRed';
+  const title = operational ? titleText || 'Aviso de tu recorrido' : titleText.toLocaleLowerCase('es').includes('salida programada')
     ? titleText : `Salida programada · ${titleText || 'BSRed'}`;
-  const body = (validDeparture ? notificationText(payload.body, 500) : '')
+  const body = (valid ? notificationText(payload.body, 500) : '')
     || 'Revisa el horario de tu recorrido favorito en BSRed.';
   // La misma salida reemplaza su aviso, incluso si llega dos veces por Web Push.
-  const tag = validDeparture
+  const tag = validOperational ? `bsred-operativo-${eventId}` : validDeparture
     ? `bsred-salida-${id}-${Math.floor(departure / 1000)}`
     : 'bsred-aviso-salida';
 
@@ -124,8 +135,8 @@ self.addEventListener('push', event => {
     tag,
     renotify: false,
     data: {
-      url: validDeparture ? url : '/',
-      horario_id: validDeparture ? id : null,
+      url: valid ? url : '/',
+      horario_id: valid ? id : null,
       salida_en: validDeparture ? new Date(departure).toISOString() : null
     }
   }));

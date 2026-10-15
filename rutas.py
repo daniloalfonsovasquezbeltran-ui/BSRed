@@ -157,11 +157,28 @@ def _read_cache(path):
         return None
 
 
-def route_geometry(origen, destino, via=()):
-    places = resolve_places(origen, destino, via)
+def route_geometry(origen, destino, via=(), cache_only=False):
+    return route_geometry_points(resolve_places(origen, destino, via), cache_only=cache_only)
+
+
+def route_geometry_points(places, cache_only=False):
+    """Carretera entre coordenadas verificadas; cache_only nunca accede a la red."""
+    if not isinstance(places, list) or not 2 <= len(places) <= 100:
+        raise RouteDefinitionError('El recorrido necesita entre 2 y 100 paradas.')
+    for place in places:
+        if not isinstance(place, dict) or any(type(place.get(k)) not in (int, float)
+                or not math.isfinite(place[k]) for k in ('lat', 'lon')):
+            raise RouteDefinitionError('Coordenadas de parada inválidas.')
+        if abs(place['lat']) > 90 or abs(place['lon']) > 180:
+            raise RouteDefinitionError('Coordenadas de parada inválidas.')
     directory = cache_directory()
     key = hashlib.sha256(json.dumps([ROUTER_URL, places, 1], sort_keys=True).encode()).hexdigest()
     path = directory / (key + '.json')
+    if cache_only:
+        cached = _read_cache(path)
+        if not cached or time.time() - cached['cached_at'] > MAX_STALE:
+            return None
+        return {k: cached[k] for k in ('geometry', 'distance_m', 'duration_s')}
     with provider_lock(directory):
         cached = _read_cache(path)
         age = time.time() - cached['cached_at'] if cached else float('inf')

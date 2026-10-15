@@ -46,6 +46,8 @@ class TelemetriaIntegrationTests(unittest.TestCase):
             cur.execute(migration)
             cur.execute((Path(__file__).resolve().parents[1] / 'migrations/002_favoritos_avisos.sql').read_text())
             cur.execute((Path(__file__).resolve().parents[1] / 'migrations/004_choferes_viajes.sql').read_text())
+            for name in ('005_operaciones.sql','006_cuentas.sql','007_notificaciones.sql'):
+                cur.execute((Path(__file__).resolve().parents[1] / 'migrations' / name).read_text())
             cur.execute(migration)  # La preparación debe poder repetirse sin perder datos.
 
     @classmethod

@@ -256,18 +256,23 @@ def _enqueue_departures(get_connection, now):
         with _cursor(connection) as cursor:
             cursor.execute('''
                 SELECT p.id AS suscripcion_id, f.horario_id, f.anticipacion_min,
-                       h.origen, h.tipo, h.salida, h.dias
+                       h.origen, h.tipo, h.salida, h.llegada, h.dias
                 FROM favoritos_recorridos f
                 JOIN suscripciones_push p ON p.usuario_id = f.usuario_id AND p.activa
                 JOIN horarios h ON h.id = f.horario_id
+                JOIN empresas e ON e.id=h.empresa_id
+                JOIN usuarios u ON u.id=f.usuario_id
                 WHERE LOWER(TRIM(h.origen)) = 'panguipulli'
-                      AND LOWER(TRIM(h.tipo)) IN ('salida', 'salidas');
+                      AND LOWER(TRIM(h.tipo)) IN ('salida', 'salidas')
+                      AND h.activo AND e.estado_validacion='aprobada'
+                      AND NOT u.suspendido AND NOT u.requiere_cambio_password;
             ''')
             favorites = cursor.fetchall()
             for favorite in favorites:
                 if favorite['anticipacion_min'] not in ALLOWED_LEAD_MINUTES:
                     continue
-                for departure in departure_windows(favorite['salida'], favorite['dias'], now):
+                from notificaciones import calendar_departures
+                for departure in calendar_departures(cursor, favorite, now):
                     if departure - now > timedelta(days=1):
                         continue
                     notify_at = departure - timedelta(minutes=favorite['anticipacion_min'])
@@ -359,7 +364,7 @@ def _current_delivery(get_connection, job, now):
             cursor.execute('''
                 SELECT p.id AS suscripcion_id, p.usuario_id, p.endpoint, p.endpoint_hash,
                        p.p256dh, p.auth, f.anticipacion_min, h.id AS horario_id,
-                       h.origen, h.destino, h.tipo, h.salida, h.dias, h.anden,
+                       h.origen, h.destino, h.tipo, h.salida, h.llegada, h.dias, h.anden,
                        COALESCE(e.nombre, 'Bus') AS empresa
                 FROM avisos_salida a
                 JOIN suscripciones_push p ON p.id = a.suscripcion_id AND p.activa
@@ -367,14 +372,19 @@ def _current_delivery(get_connection, job, now):
                                            AND f.horario_id = a.horario_id
                 JOIN horarios h ON h.id = a.horario_id
                 LEFT JOIN empresas e ON e.id = h.empresa_id
-                WHERE a.id = %s AND a.estado = 'enviando' AND a.reclamo_token = %s;
+                JOIN usuarios u ON u.id=p.usuario_id
+                WHERE a.id = %s AND a.estado = 'enviando' AND a.reclamo_token = %s
+                    AND h.activo AND e.estado_validacion='aprobada'
+                    AND NOT u.suspendido AND NOT u.requiere_cambio_password;
             ''', (job['id'], job['reclamo_token']))
             row = cursor.fetchone()
+            from notificaciones import calendar_departures
+            departures = calendar_departures(cursor, row, now) if row else []
         connection.commit()
         if (row is None or normalize(row['origen']) != 'panguipulli'
                 or normalize(row['tipo']) not in ('salida', 'salidas')
                 or row['anticipacion_min'] not in ALLOWED_LEAD_MINUTES
-                or job['salida_en'] not in departure_windows(row['salida'], row['dias'], now)):
+                or job['salida_en'] not in departures):
             return None
         return dict(row)
     finally:
@@ -445,7 +455,7 @@ def _finish_job(get_connection, job, now, error=None, expired=False, defer_until
         connection.close()
 
 
-def run_notification_cycle(get_connection, sender=None, now=None, max_deliveries=40):
+def _run_web_departure_cycle(get_connection, sender=None, now=None, max_deliveries=40):
     """Prepara salidas y entrega sólo avisos vigentes; apto para cron o workers.
 
     ``sender(subscription, payload, ttl)`` puede sustituirse por un doble de
@@ -499,10 +509,20 @@ def run_notification_cycle(get_connection, sender=None, now=None, max_deliveries
     return counts
 
 
+def run_notification_cycle(get_connection, sender=None, now=None, max_deliveries=40, fcm_sender=None):
+    """Despacha salidas web, salidas Android y avisos operativos de ambos canales."""
+    from notificaciones import run_extended_cycle
+    counts = _run_web_departure_cycle(get_connection, sender, now, max_deliveries)
+    extra = run_extended_cycle(get_connection, web_sender=sender, fcm_sender=fcm_sender,
+                               now=now, max_deliveries=max_deliveries)
+    return {key:counts[key]+extra[key] for key in counts}
+
+
 def start_notification_scheduler(get_connection, logger):
     """Un thread por proceso; SKIP LOCKED y claves únicas coordinan Gunicorn."""
     enabled = os.environ.get('NOTIFICATIONS_SCHEDULER_ENABLED', 'false').strip().lower()
-    if enabled not in ('1', 'true', 'yes', 'on') or _vapid_settings() is None:
+    from notificaciones import android_configuration
+    if enabled not in ('1', 'true', 'yes', 'on') or (_vapid_settings() is None and not android_configuration()['disponible']):
         return None
     pid = os.getpid()
     with _scheduler_lock:

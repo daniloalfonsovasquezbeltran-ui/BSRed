@@ -226,11 +226,15 @@ class RouteApiIntegrationTests(unittest.TestCase):
         cls.database = psycopg2.connect(cls.url)
         cls.database.autocommit = True
         with cls.database.cursor() as cursor:
-            cursor.execute('CREATE SCHEMA IF NOT EXISTS rutas_test;')
-            cursor.execute('''CREATE TABLE IF NOT EXISTS rutas_test.horarios (
+            cursor.execute('DROP SCHEMA IF EXISTS rutas_test CASCADE; CREATE SCHEMA rutas_test; SET search_path TO rutas_test;')
+            cursor.execute('''CREATE TABLE empresas(id SERIAL PRIMARY KEY,nombre VARCHAR(100));
+                CREATE TABLE usuarios(id SERIAL PRIMARY KEY,nombre VARCHAR(100),email VARCHAR(255),password VARCHAR(255),rol VARCHAR(50),gps_activo BOOLEAN DEFAULT FALSE);
+                CREATE TABLE horarios (
                 id SERIAL PRIMARY KEY, origen VARCHAR(100), destino VARCHAR(100),
-                salida TIME, llegada TIME, dias VARCHAR(100)
+                salida TIME, llegada TIME, dias VARCHAR(100),empresa_id INTEGER REFERENCES empresas(id)
             );''')
+            for name in ('001_telemetria_web.sql','002_favoritos_avisos.sql','004_choferes_viajes.sql','005_operaciones.sql','006_cuentas.sql','007_notificaciones.sql'):
+                cursor.execute((Path(__file__).resolve().parents[1]/'migrations'/name).read_text().replace('public.','rutas_test.'))
         cls.previous_url = website.DATABASE_URL
         website.DATABASE_URL = make_dsn(cls.url, options='-c search_path=rutas_test')
         website.app.config['TESTING'] = True
@@ -244,11 +248,13 @@ class RouteApiIntegrationTests(unittest.TestCase):
 
     def setUp(self):
         with self.database.cursor() as cursor:
-            cursor.execute('TRUNCATE rutas_test.horarios RESTART IDENTITY;')
+            cursor.execute('TRUNCATE rutas_test.horarios,rutas_test.empresas RESTART IDENTITY CASCADE;')
+            cursor.execute("INSERT INTO rutas_test.empresas(nombre,estado_validacion) VALUES('Empresa fixture','aprobada');")
             cursor.execute('''INSERT INTO rutas_test.horarios (origen, destino, salida, llegada, dias) VALUES
                 ('Panguipulli', 'Valdivia', '09:00', '11:00', 'Diario'),
                 ('Panguipulli', 'Choshuenco / Neltume', '07:00', '08:30', 'Lunes a Sábado'),
                 ('Valdivia', 'Panguipulli', '10:30', NULL, 'Diario');''')
+            cursor.execute('UPDATE rutas_test.horarios SET empresa_id=1;')
         self.client = website.app.test_client()
         self.directory = tempfile.TemporaryDirectory(prefix='bsred-api-routes-test-')
         self.addCleanup(self.directory.cleanup)

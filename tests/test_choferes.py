@@ -26,7 +26,7 @@ class ChoferesIntegrationTests(unittest.TestCase):
             cur.execute('''CREATE TABLE empresas(id SERIAL PRIMARY KEY,nombre VARCHAR(100) NOT NULL);
                 CREATE TABLE usuarios(id SERIAL PRIMARY KEY,nombre VARCHAR(100),email VARCHAR(255) UNIQUE,password VARCHAR(255),rol VARCHAR(50),gps_activo BOOLEAN DEFAULT FALSE);
                 CREATE TABLE horarios(id SERIAL PRIMARY KEY,empresa_id INTEGER REFERENCES empresas(id),tipo VARCHAR(30),origen VARCHAR(100),destino VARCHAR(100),salida TIME,llegada TIME,dias VARCHAR(100),anden VARCHAR(30));''')
-            for name in ['001_telemetria_web.sql','002_favoritos_avisos.sql','004_choferes_viajes.sql']:
+            for name in ['001_telemetria_web.sql','002_favoritos_avisos.sql','004_choferes_viajes.sql','005_operaciones.sql','006_cuentas.sql','007_notificaciones.sql']:
                 cur.execute((Path(__file__).resolve().parents[1]/'migrations'/name).read_text().replace('public.','choferes_test.'))
     @classmethod
     def tearDownClass(cls):
@@ -34,7 +34,7 @@ class ChoferesIntegrationTests(unittest.TestCase):
     def setUp(self):
         with self.database.cursor() as cur:
             cur.execute('TRUNCATE empresas,usuarios,horarios RESTART IDENTITY CASCADE;')
-            cur.execute("INSERT INTO empresas(nombre) VALUES('Empresa A'),('Empresa B');")
+            cur.execute("INSERT INTO empresas(nombre,estado_validacion) VALUES('Empresa A','aprobada'),('Empresa B','aprobada');")
             cur.execute('''INSERT INTO usuarios(nombre,email,password,rol,empresa_id) VALUES
                 ('Empresa A','a@example.invalid','fixture-password','empresa',1),
                 ('Empresa B','b@example.invalid','fixture-password','empresa',2),
@@ -43,6 +43,7 @@ class ChoferesIntegrationTests(unittest.TestCase):
                 ('Admin','admin@example.invalid','fixture-password','admin',NULL),
                 ('Pruebas','test@example.invalid','fixture-password','empresa',NULL);''')
             cur.execute("INSERT INTO horarios(empresa_id,tipo,origen,destino,salida,llegada,dias,anden) VALUES(1,'salida','Panguipulli','Valdivia','09:00','11:00','Todos los días','1'),(2,'salida','Panguipulli','Temuco','09:00','11:00','Todos los días','2');")
+            cur.execute("INSERT INTO buses(empresa_id,patente,capacidad) VALUES(1,'ABCD12',45),(1,'TEST99',30);")
         self.company=self.login('a');self.other=self.login('b');self.driver=self.login('driver')
     def login(self,name,password='fixture-password'):
         client=website.app.test_client();r=client.post('/api/login',json={'email':name+'@example.invalid','password':password})
@@ -89,7 +90,9 @@ class ChoferesIntegrationTests(unittest.TestCase):
         self.assertEqual(self.start().status_code,404)
     def test_same_bus_cannot_start_two_trips(self):
         self.assertEqual(self.start().status_code,201);self.create()
-        self.assertEqual(self.start(self.login('new'),plate='AB-CD12').status_code,409)
+        client=self.login('new')
+        self.assertEqual(client.post('/api/cuentas/password',json={'password_actual':'fixture-password','password_nuevo':'new-fixture-password'}).status_code,200)
+        self.assertEqual(self.start(client,plate='AB-CD12').status_code,409)
     def test_registration_errors_do_not_expose_private_database_details(self):
         with patch.object(website,'get_db_connection',side_effect=RuntimeError('fixture-private-detail')):
             result=self.company.post('/api/registro',json={'nombre':'Nueva','email':'error@example.invalid','password':'fixture-password','rol':'empresa'})
@@ -136,7 +139,7 @@ class ChoferesIntegrationTests(unittest.TestCase):
         self.assertEqual(self.driver.post('/api/logout').status_code,200)
     def test_old_fix_never_overwrites_new_and_stale_points_are_hidden(self):
         trip=self.start().json;self.point(trip)
-        old=(datetime.now(timezone.utc)-timedelta(seconds=30)).isoformat()
+        old=(datetime.now(timezone.utc)-timedelta(seconds=1)).isoformat()
         r=self.point(trip,latitud=-38,ubicacion_en=old);self.assertFalse(r.json['actualizada'])
         with self.database.cursor() as c:c.execute("UPDATE viajes SET ubicacion_en=CURRENT_TIMESTAMP-INTERVAL '3 minutes';")
         row=self.driver.get('/api/mapa/posiciones').json['posiciones'][0];self.assertIsNone(row['latitud']);self.assertIsNone(row['longitud'])
@@ -240,3 +243,64 @@ class ChoferesIntegrationTests(unittest.TestCase):
         with self.database.cursor() as cur:
             cur.execute("SELECT COUNT(*) FROM viajes WHERE estado='en_curso';")
             self.assertEqual(cur.fetchone()[0],0)
+
+    def test_new_driver_must_change_initial_password_before_starting(self):
+        self.create();client=self.login('new')
+        blocked=self.start(client)
+        self.assertEqual(blocked.status_code,403)
+        self.assertEqual(blocked.json['code'],'PASSWORD_CHANGE_REQUIRED')
+        result=client.post('/api/cuentas/password',json={'password_actual':'fixture-password','password_nuevo':'fresh-fixture-password'})
+        self.assertEqual(result.status_code,200)
+        self.assertEqual(client.post('/api/chofer/viajes',json={'horario_id':1,'bus_id':1}).status_code,201)
+
+    def test_start_requires_registered_owned_unassigned_bus(self):
+        self.assertEqual(self.start(plate='UNKNOWN99').status_code,404)
+        with self.database.cursor() as cur:
+            cur.execute("INSERT INTO buses(empresa_id,patente,capacidad) VALUES(2,'OTRO99',40) RETURNING id;")
+            foreign=cur.fetchone()[0]
+        self.assertEqual(self.driver.post('/api/chofer/viajes',json={'horario_id':1,'bus_id':foreign}).status_code,404)
+        assigned=self.create().json['id']
+        self.assertEqual(self.company.patch('/api/empresa/buses/1',json={'chofer_id':assigned}).status_code,200)
+        self.assertEqual(self.driver.post('/api/chofer/viajes',json={'horario_id':1,'bus_id':1}).status_code,404)
+
+    def test_unapproved_company_cannot_start_or_publish_live_positions(self):
+        trip=self.start().json
+        with self.database.cursor() as cur:cur.execute("UPDATE empresas SET estado_validacion='rechazada' WHERE id=1;")
+        self.assertEqual(self.point(trip).status_code,401)
+        self.assertEqual(self.driver.get('/api/mapa/posiciones').json['posiciones'],[])
+        self.assertEqual(self.driver.get('/api/mapa/ruta/1').status_code,404)
+        self.assertEqual(self.driver.post('/api/chofer/viajes/'+str(trip['viaje']['id'])+'/finalizar',json={}).status_code,200)
+        self.assertEqual(self.start().status_code,403)
+
+    def test_explicit_non_operating_day_blocks_trip_and_changes_public_calendar(self):
+        from rutas import CHILE_TZ
+        day=datetime.now(CHILE_TZ).date().isoformat()
+        result=self.company.post('/api/empresa/horarios/1/excepciones',json={'fecha':day,'opera':False,'motivo':'Fixture cerrado'})
+        self.assertEqual(result.status_code,201)
+        self.assertEqual(self.start().status_code,409)
+        rows=self.driver.get('/api/horarios?fecha='+day).json
+        route=next(row for row in rows if row['id']==1)
+        self.assertFalse(route['opera_fecha']);self.assertEqual(route['motivo_excepcion'],'Fixture cerrado')
+
+    def test_invalid_large_coordinate_is_400_and_physical_jump_is_not_published(self):
+        trip=self.start().json
+        self.assertEqual(self.point(trip,latitud=10**400).status_code,400)
+        self.assertEqual(self.point(trip).status_code,200)
+        jump=self.point(trip,latitud=-38,longitud=-70)
+        self.assertEqual(jump.status_code,200);self.assertFalse(jump.json['actualizada'])
+        self.assertEqual(self.driver.get('/api/mapa/posiciones').json['posiciones'][0]['latitud'],-39.64)
+
+    def test_live_arrival_uses_observed_speed_and_cached_road(self):
+        trip=self.start().json;now=datetime.now(timezone.utc)
+        with self.database.cursor() as cur:
+            cur.execute("""UPDATE viajes SET iniciado_en=%s,ubicacion_en=%s,latitud=-39.64,longitud=-72.34,
+                precision_m=10 WHERE id=%s;""",(now-timedelta(minutes=1),now-timedelta(seconds=30),trip['viaje']['id']))
+        self.assertTrue(self.point(trip,longitud=-72.338,precision_m=10,ubicacion_en=(now-timedelta(seconds=15)).isoformat()).json['actualizada'])
+        self.assertTrue(self.point(trip,longitud=-72.336,precision_m=10,ubicacion_en=now.isoformat()).json['actualizada'])
+        geometry={'geometry':{'type':'LineString','coordinates':[[-72.34,-39.64],[-72.32,-39.64]]}}
+        with patch('choferes.schedule_geometry',return_value=geometry):
+            result=self.driver.get('/api/mapa/posiciones').json['posiciones'][0]
+        self.assertEqual(result['eta_estado'],'disponible');self.assertGreater(result['eta_minutos'],0)
+        with self.database.cursor() as cur:
+            cur.execute('SELECT distancia_m FROM viajes WHERE id=%s;',(trip['viaje']['id'],))
+            self.assertGreater(cur.fetchone()[0],200)

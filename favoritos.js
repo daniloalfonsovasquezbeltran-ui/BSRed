@@ -43,9 +43,23 @@
         let dispositivoActivo = false;
         let dispositivoEnCurso = false;
         let versionDispositivo = 0;
+        let favoritosEnCache = false;
         const enCurso = new Set();
         const solicitudes = new Set();
         let mensajeDispositivo = 'Comprobando avisos en este dispositivo...';
+
+        function soloLectura() {
+            return navigator.onLine === false || Boolean(usuario && (usuario.offline || usuario.requiere_cambio_password)) || favoritosEnCache;
+        }
+
+        function cargarCache() {
+            const saved=window.BSRedOffline && window.BSRedOffline.leerFavoritos(usuario);
+            if (!saved) return false;
+            favoritos=new Map(saved.favoritos.filter(item=>Number.isInteger(Number(item.horario_id))).map(item=>[Number(item.horario_id),item]));
+            cargados=true;favoritosEnCache=true;
+            informar(`Favoritos guardados · sólo lectura · actualizados ${window.BSRedOffline.fecha(saved.actualizado_en)}.`);
+            return true;
+        }
 
         function informar(mensaje, error = false) {
             if (!opciones.estado) return;
@@ -114,7 +128,7 @@
             boton.setAttribute('aria-pressed', String(guardado));
             boton.setAttribute('aria-label', `${guardado ? 'Quitar de' : 'Añadir a'} favoritos: ${horario.origen || ''} a ${horario.destino || ''}`);
             boton.title = guardado ? 'Quitar de favoritos' : 'Guardar recorrido favorito';
-            boton.disabled = enCurso.has(id) || Boolean(usuario && !cargados);
+            boton.disabled = soloLectura() || enCurso.has(id) || Boolean(usuario && !cargados);
             boton.onclick = () => alternar(horario);
             return boton;
         }
@@ -124,6 +138,7 @@
         }
 
         async function guardar(id, minutos, horario) {
+            if (soloLectura()) { informar('Los cambios requieren conexión y una cuenta habilitada.',true);return; }
             if (!usuario || enCurso.has(id)) return;
             const version = versionSesion;
             const foco = focoActual();
@@ -150,6 +165,7 @@
         }
 
         async function quitar(id) {
+            if (soloLectura()) { informar('Los cambios requieren conexión y una cuenta habilitada.',true);return; }
             if (!usuario || enCurso.has(id)) return;
             const version = versionSesion;
             const foco = focoActual();
@@ -159,6 +175,7 @@
                 await solicitar(`/api/favoritos/${id}`, 'DELETE');
                 if (version !== versionSesion) return;
                 favoritos.delete(id);
+                if(window.BSRedOffline)window.BSRedOffline.guardarFavoritos(usuario,Array.from(favoritos.values()));
                 informar('Recorrido eliminado de tus favoritos.');
             } catch (error) {
                 if (version === versionSesion) manejarError(error, 'No se pudo eliminar el favorito. Revisa la conexión e inténtalo nuevamente.');
@@ -190,6 +207,9 @@
 
         async function refrescar() {
             if (!usuario) return;
+            if (navigator.onLine === false || usuario.offline) {
+                cargarCache();notificarCambio();return;
+            }
             const version = versionSesion;
             const lectura = ++versionLectura;
             cargando = true;
@@ -201,11 +221,15 @@
                 favoritos = new Map(datos.favoritos.filter(item => Number.isInteger(Number(item.horario_id)))
                     .map(item => [Number(item.horario_id), item]));
                 cargados = true;
+                favoritosEnCache=false;
+                if(window.BSRedOffline)window.BSRedOffline.guardarFavoritos(usuario,Array.from(favoritos.values()));
                 informar(favoritos.size ? `${favoritos.size} recorrido${favoritos.size === 1 ? '' : 's'} guardado${favoritos.size === 1 ? '' : 's'}.`
                     : 'Marca la estrella de un recorrido en el mapa para guardarlo.');
             } catch (error) {
-                if (version === versionSesion && lectura === versionLectura) manejarError(error,
-                    'No se pudieron actualizar tus favoritos. Revisa la conexión e inténtalo nuevamente.');
+                if (version === versionSesion && lectura === versionLectura) {
+                    if(error.status===401 || error.status===403 || !cargarCache())manejarError(error,
+                        'No se pudieron actualizar tus favoritos. Revisa la conexión e inténtalo nuevamente.');
+                }
             } finally {
                 if (version === versionSesion && lectura === versionLectura) {
                     cargando = false;
@@ -249,7 +273,7 @@
                         selector.append(opcion);
                     });
                     selector.value = String(favorito.minutos_antes || 10);
-                    selector.disabled = enCurso.has(id);
+                    selector.disabled = soloLectura() || enCurso.has(id);
                     selector.onchange = () => guardar(id, Number(selector.value), horario);
                     etiqueta.append(selector);
                     controles.append(etiqueta);
@@ -261,7 +285,7 @@
                 controles.append(enlace);
                 const eliminar = elemento('button', 'ml-auto px-3 py-2 rounded-lg border border-rose-500/40 text-rose-300 text-sm', 'Quitar favorito');
                 eliminar.type = 'button';
-                eliminar.disabled = enCurso.has(id);
+                eliminar.disabled = soloLectura() || enCurso.has(id);
                 eliminar.onclick = () => quitar(id);
                 controles.append(eliminar);
                 tarjeta.append(controles);
@@ -281,7 +305,7 @@
             const boton = elemento('button', 'mt-4 px-4 py-3 rounded-xl bg-blue-600 hover:bg-blue-500 text-white text-sm font-semibold',
                 dispositivoActivo ? 'Desactivar avisos en este dispositivo' : 'Activar avisos en este dispositivo');
             boton.type = 'button';
-            boton.disabled = dispositivoEnCurso || (!dispositivoActivo
+            boton.disabled = soloLectura() || dispositivoEnCurso || (!dispositivoActivo
                 && (!config || !config.disponible || Notification.permission === 'denied'));
             boton.onclick = dispositivoActivo ? desactivar : activar;
             contenedor.append(boton);
@@ -499,7 +523,13 @@
         function actualizarSesion(nueva) {
             const anterior = usuario && String(usuario.id || usuario.email);
             const siguiente = nueva && String(nueva.id || nueva.email);
-            if (anterior === siguiente) return;
+            if (anterior === siguiente) {
+                const changed=Boolean(usuario && usuario.offline)!==Boolean(nueva && nueva.offline);
+                usuario=nueva||null;
+                if(changed && usuario){refrescar();refrescarDispositivo();}
+                else notificarCambio();
+                return;
+            }
             usuario = nueva || null;
             ++versionSesion;
             ++versionLectura;
@@ -507,6 +537,7 @@
             solicitudes.forEach(controlador => controlador.abort());
             favoritos = new Map();
             cargados = false;
+            favoritosEnCache=false;
             cargando = false;
             enCurso.clear();
             config = null;
@@ -522,7 +553,7 @@
             }
             const version = versionSesion;
             refrescar().then(async () => {
-                if (!cargados || version !== versionSesion) return;
+                if (!cargados || version !== versionSesion || soloLectura()) return;
                 let pendiente;
                 try {
                     pendiente = Number(sessionStorage.getItem(PENDIENTE));
@@ -536,17 +567,19 @@
         }
 
         window.addEventListener('online', () => {
-            if (!usuario) return;
+            if (!usuario || usuario.offline) return;
             refrescar();
             refrescarDispositivo();
         });
+        window.addEventListener('offline',()=>{notificarCambio();renderizarDispositivo();});
+        window.addEventListener('bsred:offline-sesion-revocada',()=>actualizarSesion(null));
         document.addEventListener('visibilitychange', () => {
             if (document.visibilityState === 'visible' && usuario) {
                 refrescar();
                 refrescarDispositivo();
             }
         });
-        const controlador = { actualizarSesion, crearBoton, refrescar, refrescarDispositivo, desvincularNavegador };
+        const controlador = { actualizarSesion, crearBoton, refrescar, refrescarDispositivo, desvincularNavegador, ids:()=>Array.from(favoritos.keys()) };
         informar('Marca ★ para guardar un recorrido.');
         actualizarSesion(opciones.usuario || null);
         return controlador;
