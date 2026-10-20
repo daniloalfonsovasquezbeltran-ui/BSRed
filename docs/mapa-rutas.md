@@ -47,6 +47,20 @@ El navegador mueve el marcador cada 15 segundos y consulta las ventanas cada
 encuadre elegido por el usuario. Colores y selección siguen vinculados al
 horario correspondiente; una respuesta anterior no reemplaza nuevos filtros.
 
+## Selección y vista Todos
+
+Elegir un recorrido muestra exclusivamente su trazado, sus buses y sus paradas
+confirmadas. Volver a pulsar ese recorrido conserva la selección. Si su trazado
+no está disponible, se informa el problema sin mostrar trazados ajenos; su GPS
+reciente puede seguir visible. Las respuestas tardías y los refrescos respetan
+la selección.
+
+El botón **Todos los recorridos** activa la vista general de los horarios que
+cumplen los filtros actuales. El botón marcado y el título del mapa distinguen
+esta vista de **Recorrido seleccionado**. Los filtros conservan la selección
+mientras el recorrido siga incluido; si lo excluyen, vuelve la vista general.
+Cambiar entre Salidas y Llegadas también restablece la vista general.
+
 ## Servidor y disponibilidad
 
 `GET /api/mapa/ruta/<id>` devuelve GeoJSON, distancia, fuente, localidades,

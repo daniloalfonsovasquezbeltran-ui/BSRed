@@ -89,9 +89,9 @@
                 </details>
                 <p id="horarios-actualizacion" class="text-xs text-slate-300" role="status" aria-live="polite"></p>
                 <div data-accesibilidad></div>
-                <button id="btn-reset" onclick="seleccionarHorario(null)" 
-                        class="w-full py-1.5 px-3 bg-slate-800 hover:bg-slate-700 text-blue-400 text-xs font-semibold rounded-lg border border-slate-700 transition flex items-center justify-center gap-1">
-                    🌐 Ver todas las rutas (<span id="txt-tab-actual">Salidas</span>)
+                <button id="btn-reset" type="button" onclick="seleccionarHorario(null)" aria-pressed="true" aria-controls="map"
+                        class="vista-todos w-full py-1.5 px-3 text-xs font-semibold rounded-lg border transition flex items-center justify-center gap-1">
+                    🌐 Todos los recorridos (<span id="txt-tab-actual">Salidas</span>)
                 </button>
             </div>
 
@@ -110,6 +110,8 @@
         <div id="map" class="w-full h-full"></div>
 
         <div class="absolute top-4 right-4 z-[1000] max-w-[85%] bg-slate-900/90 border border-slate-800 p-3 rounded-xl backdrop-blur text-xs space-y-1 shadow-lg">
+            <p id="vista-mapa" class="mapa-vista-titulo" data-vista="todos">Todos los recorridos</p>
+            <p id="resumen-vista" class="text-[11px] text-slate-300" aria-live="polite">Vista general de los recorridos según los filtros.</p>
             <div class="flex items-center gap-2">
                 <span id="indicador-pulso" class="w-3 h-3 rounded-full bg-blue-500 animate-pulse"></span>
                 <span id="estado-mapa" class="font-medium text-slate-200">Cargando mapa...</span>
@@ -429,8 +431,9 @@
             const index = datosHorarios.findIndex(row => row.id === seleccion); itemSeleccionadoIndex = index < 0 ? null : index;
             renderizarLista();
             if (mapaRutas && (forzarMapa === true || anteriores !== datosHorarios.map(row => row.id).join(','))) {
-                mapaRutas.mostrar(datosHorarios, { tab: currentTab });
-                if (itemSeleccionadoIndex != null) mapaRutas.seleccionar(datosHorarios[itemSeleccionadoIndex].id);
+                mapaRutas.mostrar(datosHorarios, {
+                    tab: currentTab, seleccionado: itemSeleccionadoIndex == null ? null : datosHorarios[itemSeleccionadoIndex].id
+                });
             }
         }
         function limpiarFiltros() {
@@ -503,6 +506,9 @@
             clearTimeout(esperaBusqueda);
             currentTab = tab;
             itemSeleccionadoIndex = null;
+            datosHorarios = []; horariosBase = [];
+            if (mapaRutas) mapaRutas.limpiar();
+            renderizarLista(true);
             document.getElementById('tab-salidas').className = tab === 'salidas' ? 'flex-1 py-1.5 rounded-md bg-blue-600 text-white font-bold' : 'flex-1 py-1.5 text-slate-400';
             document.getElementById('tab-llegadas').className = tab === 'llegadas' ? 'flex-1 py-1.5 rounded-md bg-amber-600 text-white font-bold' : 'flex-1 py-1.5 text-slate-400';
             document.getElementById('txt-tab-actual').textContent = tab === 'salidas' ? 'Salidas' : 'Llegadas';
@@ -519,6 +525,7 @@
         function renderizarLista(cargando = false, error = '') {
             const contenedor = document.getElementById('lista-horarios');
             contenedor.replaceChildren();
+            actualizarVistaMapa();
             if (!datosHorarios.length) {
                 contenedor.append(crearTexto('p', 'text-center text-slate-400 py-10 text-sm',
                     error || (cargando ? 'Cargando horarios...' : 'No se encontraron recorridos.')));
@@ -559,8 +566,24 @@
             });
         }
 
+        function actualizarVistaMapa() {
+            const item = itemSeleccionadoIndex == null ? null : datosHorarios[itemSeleccionadoIndex];
+            const todos = !item;
+            const boton = document.getElementById('btn-reset');
+            boton.setAttribute('aria-pressed', String(todos));
+            boton.dataset.tab = currentTab;
+            boton.title = todos ? 'Vista general activa: todos los recorridos según los filtros.' : 'Volver a todos los recorridos según los filtros.';
+            const titulo = document.getElementById('vista-mapa');
+            titulo.textContent = todos ? 'Todos los recorridos' : 'Recorrido seleccionado';
+            titulo.dataset.vista = todos ? 'todos' : 'seleccionado';
+            document.getElementById('resumen-vista').textContent = todos
+                ? `Vista general · ${datosHorarios.length} ${currentTab === 'salidas' ? 'salidas' : 'llegadas'} según los filtros.`
+                : `${item.origen || ''} → ${item.destino || ''} · Sólo este recorrido, sus buses y paradas.`;
+        }
+
         function seleccionarHorario(index) {
-            itemSeleccionadoIndex = index == null || itemSeleccionadoIndex === index ? null : index;
+            if (index != null && (!Number.isInteger(index) || !datosHorarios[index])) return;
+            itemSeleccionadoIndex = index == null ? null : index;
             renderizarLista();
             if (mapaRutas) mapaRutas.seleccionar(itemSeleccionadoIndex == null ? null : datosHorarios[itemSeleccionadoIndex].id);
         }

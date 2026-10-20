@@ -50,7 +50,15 @@
         const capas = new Map(), cache = new Map(), errores = new Map();
         const marcadoresGPS = new Map(), marcadoresParadas = new Map();
         let posicionesGPS = [], solicitandoGPS = false, ultimaFirmaGPS = null;
+        let zoomEnCurso = false;
         const controladores = new Set(), cola = [];
+        map.on('zoomstart', () => { zoomEnCurso = true; });
+        map.on('zoomend', () => {
+            zoomEnCurso = false;
+            global.requestAnimationFrame(() => {
+                if (encuadrePendiente) encuadrePendiente = !encuadrar();
+            });
+        });
         if (map.attributionControl) {
             map.attributionControl.addAttribution('Recorridos © <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a>');
         }
@@ -106,6 +114,10 @@
         function quitarMarcador(capa) {
             if (capa.marcador) map.removeLayer(capa.marcador);
             capa.marcador = null;
+        }
+
+        function recorridoVisible(id) {
+            return seleccionado == null || id === seleccionado;
         }
 
         function limpiar() {
@@ -251,26 +263,33 @@
         }
 
         function actualizarEstado() {
-            const buses = Array.from(capas.values()).filter(capa => capa.marcador).length;
+            const visibles = horarios.filter(horario => recorridoVisible(horario.id));
+            const trazadas = visibles.filter(horario => capas.has(horario.id)).length;
+            const fallos = visibles.filter(horario => errores.has(horario.id));
+            const buses = Array.from(capas.values()).filter(capa => recorridoVisible(capa.horario.id) && capa.marcador).length;
+            const esperando = cargando && (seleccionado == null || (!trazadas && !fallos.length));
             let tipo = 'listo', texto;
-            if (!horarios.length) { tipo = 'vacio'; texto = 'No hay horarios para estos filtros'; }
-            else if (cargando) { tipo = 'cargando'; texto = `Trazando recorridos por carretera (${capas.size}/${horarios.length})…`; }
-            else if (!capas.size) { tipo = 'error'; texto = 'No se pudieron trazar los recorridos; los horarios siguen disponibles'; }
+            if (!visibles.length) { tipo = 'vacio'; texto = 'No hay horarios para estos filtros'; }
+            else if (esperando) { tipo = 'cargando'; texto = `Trazando recorridos por carretera (${trazadas}/${visibles.length})…`; }
+            else if (!trazadas) { tipo = 'error'; texto = seleccionado == null
+                ? 'No se pudieron trazar los recorridos; los horarios siguen disponibles'
+                : 'Trazado no disponible para el recorrido seleccionado'; }
             else {
-                tipo = errores.size ? 'parcial' : 'listo';
-                texto = `${capas.size} recorridos por carretera · ${buses} buses con ubicación estimada`;
-                const sinTrazado = Array.from(errores.keys()).filter(id => !capas.has(id)).length;
+                tipo = fallos.length ? 'parcial' : 'listo';
+                texto = `${trazadas} ${trazadas === 1 ? 'recorrido' : 'recorridos'} por carretera · ${buses} buses con ubicación estimada`;
+                const sinTrazado = fallos.filter(horario => !capas.has(horario.id)).length;
                 if (sinTrazado) texto += ` · ${sinTrazado} sin trazado disponible`;
-                if (errores.size > sinTrazado) texto += ` · ${errores.size - sinTrazado} trazados sin actualizar`;
+                if (fallos.length > sinTrazado) texto += ` · ${fallos.length - sinTrazado} trazados sin actualizar`;
             }
-            informar({ tipo, texto, trazadas: capas.size, total: horarios.length, busesEstimados: buses });
-            if (marcadoresGPS.size) informar({ tipo, texto: texto + ` · ${marcadoresGPS.size} buses con GPS real`, trazadas: capas.size, total: horarios.length, busesEstimados: buses });
+            if (marcadoresGPS.size) texto += ` · ${marcadoresGPS.size} buses con GPS real`;
+            informar({ tipo, texto, trazadas, total: visibles.length, busesEstimados: buses });
             actualizarDetalle();
         }
 
         function moverBuses() {
             if (document.visibilityState !== 'visible') return;
             capas.forEach(capa => {
+                if (!recorridoVisible(capa.horario.id)) { quitarMarcador(capa); return; }
                 if (posicionesGPS.some(p => p.horario_id === capa.horario.id)) { quitarMarcador(capa); return; }
                 const ventana = ventanaActiva(capa);
                 if (!ventana) { quitarMarcador(capa); return; }
@@ -295,6 +314,7 @@
         function moverParadas() {
             const deseadas = new Map();
             capas.forEach(capa => {
+                if (!recorridoVisible(capa.horario.id)) return;
                 const paradas = Array.isArray(capa.dato.datos.paradas) ? capa.dato.datos.paradas : [];
                 paradas.forEach(parada => {
                     if (parada.confirmada !== true || parada.activa === false || !Number.isInteger(parada.id) || parada.id <= 0
@@ -338,7 +358,7 @@
             const activos = new Set();
             for (const punto of posicionesGPS) {
                 const horario = horarios.find(h => h.id === punto.horario_id);
-                if (!horario || !gpsReciente(punto)) continue;
+                if (!horario || !recorridoVisible(horario.id) || !gpsReciente(punto)) continue;
                 activos.add(punto.viaje_id);
                 const contenido = document.createElement('div');
                 for (const texto of [`${horario.origen} → ${horario.destino}`, `Bus ${punto.patente} · Ubicación GPS real`,
@@ -384,24 +404,32 @@
             finally {
                 try { moverBuses(); emitirGPS(); }
                 finally { solicitandoGPS=false; }
+                if (encuadrePendiente && seleccionado != null) encuadrePendiente = !encuadrar();
             }
         }
 
         function destacar() {
             capas.forEach((capa, id) => {
-                capa.linea.setStyle({ weight: id === seleccionado ? 6 : 3, opacity: seleccionado == null || id === seleccionado ? 0.95 : 0.45 });
-                if (id === seleccionado) capa.linea.bringToFront();
+                if (recorridoVisible(id)) {
+                    capa.linea.setStyle({ weight: id === seleccionado ? 6 : 3, opacity: 0.95 });
+                    if (!map.hasLayer(capa.linea)) capa.linea.addTo(map);
+                    if (id === seleccionado) capa.linea.bringToFront();
+                } else {
+                    map.removeLayer(capa.linea);
+                    quitarMarcador(capa);
+                }
             });
         }
 
         function encuadrar() {
-            const elegida = capas.get(seleccionado);
-            const puntos = elegida ? elegida.dato.camino.puntos : Array.from(capas.values()).flatMap(capa => capa.dato.camino.puntos);
-            if (puntos.length) map.fitBounds(L.latLngBounds(puntos), { padding: [40, 40], maxZoom: 12 });
-            else {
-                const gps=posicionesGPS.find(p => p.horario_id===seleccionado && gpsReciente(p));
-                if(gps) map.setView([gps.latitud,gps.longitud],12);
-            }
+            if (zoomEnCurso) return false;
+            const puntos = Array.from(capas.values()).filter(capa => recorridoVisible(capa.horario.id))
+                .flatMap(capa => capa.dato.camino.puntos);
+            posicionesGPS.filter(p => recorridoVisible(p.horario_id) && horarios.some(h => h.id === p.horario_id) && gpsReciente(p))
+                .forEach(p => puntos.push([p.latitud, p.longitud]));
+            if (!puntos.length) return false;
+            map.fitBounds(L.latLngBounds(puntos), { padding: [40, 40], maxZoom: 12, animate: false });
+            return true;
         }
 
         function incorporar(horario, indice, dato) {
@@ -411,7 +439,7 @@
             capa.dato = dato;
             if (existente) capa.linea.setLatLngs(dato.camino.puntos);
             else {
-                capa.linea = L.polyline(dato.camino.puntos, { color, weight: 3, opacity: 0.95 }).addTo(map);
+                capa.linea = L.polyline(dato.camino.puntos, { color, weight: 3, opacity: 0.95 });
                 capa.linea.on('click', () => opciones.onSeleccion && opciones.onSeleccion(horario.id));
                 capas.set(horario.id, capa);
             }
@@ -420,6 +448,7 @@
             desfaseServidor = dato.desfase;
             destacar();
             moverBuses();
+            if (encuadrePendiente && seleccionado === horario.id) encuadrePendiente = !encuadrar();
         }
 
         async function cargar(refresco) {
@@ -453,14 +482,14 @@
             if (version !== generacion) return;
             cargando = false;
             moverBuses();
-            if (encuadrePendiente) { encuadrar(); encuadrePendiente = false; }
+            if (encuadrePendiente) encuadrePendiente = !encuadrar();
         }
 
         function mostrar(datos, ajustes = {}) {
             limpiar();
             horarios = datos.filter(horario => Number.isInteger(horario.id) && horario.id > 0);
             tab = ajustes.tab === 'llegadas' ? 'llegadas' : 'salidas';
-            seleccionado = ajustes.seleccionado == null ? null : ajustes.seleccionado;
+            seleccionado = horarios.some(horario => horario.id === ajustes.seleccionado) ? ajustes.seleccionado : null;
             encuadrePendiente = true;
             actualizarEstado();
             cargar(false);
@@ -468,8 +497,10 @@
         }
 
         function seleccionar(id) {
-            seleccionado = id;
-            destacar(); actualizarDetalle(); encuadrar();
+            if (id != null && !horarios.some(horario => horario.id === id)) return;
+            seleccionado = id == null ? null : id;
+            destacar(); moverBuses();
+            encuadrePendiente = !encuadrar();
         }
 
         global.setInterval(moverBuses, 15000);

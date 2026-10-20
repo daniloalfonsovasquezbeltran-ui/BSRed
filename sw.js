@@ -1,5 +1,5 @@
 // Service Worker: network-first para HTML y APIs, cache-first para estáticos
-const CACHE = 'bsred-v7';
+const CACHE = 'bsred-v8';
 const ASSETS = [
   '/',
   '/logo.jpg',
