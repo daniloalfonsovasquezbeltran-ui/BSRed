@@ -1,5 +1,9 @@
 """Cuentas sobre PostgreSQL local; los transportes de correo siempre se simulan."""
 from concurrent.futures import ThreadPoolExecutor
+import base64
+from email import policy
+from email.parser import BytesParser
+from email.utils import parseaddr
 import hashlib
 import json
 import os
@@ -8,6 +12,8 @@ import secrets
 import ssl
 import unittest
 from unittest.mock import MagicMock, patch
+from urllib.error import HTTPError
+from urllib.parse import parse_qs
 
 import psycopg2
 from psycopg2.extensions import make_dsn, parse_dsn
@@ -20,7 +26,12 @@ import cuentas
 
 MAIL = {'BREVO_API_KEY': 'fixture-api-key-not-real', 'MAIL_FROM_EMAIL': 'bsred@example.invalid',
         'MAIL_FROM_NAME': 'BSRed fixture', 'PUBLIC_BASE_URL': 'https://bsred.onrender.com',
-        'SMTP_HOST': '', 'SMTP_USER': '', 'SMTP_PASSWORD': '', 'SMTP_FROM': ''}
+        'SMTP_HOST': '', 'SMTP_USER': '', 'SMTP_PASSWORD': '', 'SMTP_FROM': '',
+        'GMAIL_CLIENT_ID': '', 'GMAIL_CLIENT_SECRET': '', 'GMAIL_REFRESH_TOKEN': ''}
+GMAIL = {**MAIL, 'MAIL_FROM_EMAIL': 'bsredpanguipulli@gmail.com', 'MAIL_FROM_NAME': 'BSRed',
+         'GMAIL_CLIENT_ID': '1234567890-fixtureclient.apps.googleusercontent.com',
+         'GMAIL_CLIENT_SECRET': 'fixture-gmail-secret-not-real',
+         'GMAIL_REFRESH_TOKEN': 'fixture-refresh-not-real'}
 CURRENT = 'fixture-password'
 NEW = 'nueva-clave-fixture-2026'
 
@@ -70,6 +81,134 @@ class MailTransportTests(unittest.TestCase):
                                     'SMTP_USER': 'fixture', 'SMTP_PASSWORD': 'fixture',
                                     'SMTP_FROM': 'mail@example.invalid', 'SMTP_PORT': '25'}):
             self.assertIsNone(cuentas.mail_configuration())
+
+
+class GmailTransportTests(unittest.TestCase):
+    def config(self):
+        with patch.dict(os.environ, GMAIL):
+            return cuentas.mail_configuration()
+
+    @staticmethod
+    def response(payload, status=200):
+        response = MagicMock()
+        response.__enter__.return_value.status = status
+        response.__enter__.return_value.read.return_value = (
+            payload if isinstance(payload, bytes) else json.dumps(payload).encode('utf-8'))
+        return response
+
+    def test_complete_gmail_configuration_takes_precedence_over_brevo(self):
+        config = self.config()
+        self.assertEqual(config['provider'], 'gmail')
+        self.assertEqual(config['sender'], 'bsredpanguipulli@gmail.com')
+        self.assertEqual(config['name'], 'BSRed')
+        self.assertEqual(config['base_url'], 'https://bsred.onrender.com')
+        self.assertEqual(config['client_id'], GMAIL['GMAIL_CLIENT_ID'])
+        self.assertEqual(config['client_secret'], GMAIL['GMAIL_CLIENT_SECRET'])
+        self.assertEqual(config['refresh_token'], GMAIL['GMAIL_REFRESH_TOKEN'])
+
+    def test_public_recovery_configuration_exposes_no_oauth_credentials(self):
+        with patch.dict(os.environ, GMAIL):
+            response = website.app.test_client().get('/api/cuentas/config')
+        self.assertEqual(response.status_code, 200)
+        self.assertTrue(response.json['recuperacion_disponible'])
+        for secret in (GMAIL['GMAIL_CLIENT_ID'], GMAIL['GMAIL_CLIENT_SECRET'], GMAIL['GMAIL_REFRESH_TOKEN']):
+            self.assertNotIn(secret, response.get_data(as_text=True))
+
+    def test_partial_gmail_configuration_never_falls_back_to_another_sender(self):
+        alternative_smtp = {'SMTP_HOST': 'smtp.example.invalid', 'SMTP_USER': 'fixture',
+                            'SMTP_PASSWORD': 'fixture', 'SMTP_FROM': 'another@example.invalid'}
+        for missing in ('GMAIL_CLIENT_ID', 'GMAIL_CLIENT_SECRET', 'GMAIL_REFRESH_TOKEN'):
+            with self.subTest(missing=missing), patch.dict(os.environ, {**GMAIL, **alternative_smtp, missing: ''}):
+                self.assertIsNone(cuentas.mail_configuration())
+
+    def test_gmail_rejects_unsafe_origin_sender_and_display_name(self):
+        for changes in ({'PUBLIC_BASE_URL': 'http://bsred.onrender.com'},
+                        {'PUBLIC_BASE_URL': 'https://user:password@bsred.onrender.com'},
+                        {'PUBLIC_BASE_URL': 'https://bsred.onrender.com/unexpected'},
+                        {'MAIL_FROM_EMAIL': 'bsredpanguipulli@gmail.com\r\nBcc: other@example.invalid'},
+                        {'MAIL_FROM_NAME': 'BSRed\nInjected'}):
+            with self.subTest(changes=changes), patch.dict(os.environ, {**GMAIL, **changes}):
+                self.assertIsNone(cuentas.mail_configuration())
+
+    def test_gmail_refreshes_oauth_and_sends_exact_sender_mime_over_verified_https(self):
+        opener = MagicMock()
+        opener.open.side_effect = [self.response({'access_token': 'fixture-access-not-real', 'token_type': 'Bearer',
+                                                  'expires_in': 3600}), self.response({'id': 'fixture-message'})]
+        with patch.object(cuentas, 'build_opener', return_value=opener) as build, \
+                patch.object(cuentas.smtplib, 'SMTP') as smtp, patch.object(cuentas.smtplib, 'SMTP_SSL') as smtp_ssl:
+            cuentas._deliver_reset_email('receiver@example.invalid', 'fixture-reset-token', self.config())
+        self.assertEqual(opener.open.call_count, 2)
+        oauth_request, send_request = [call.args[0] for call in opener.open.call_args_list]
+        self.assertEqual(oauth_request.full_url, 'https://oauth2.googleapis.com/token')
+        self.assertEqual(oauth_request.get_method(), 'POST')
+        self.assertEqual(parse_qs(oauth_request.data.decode('ascii')), {
+            'grant_type': ['refresh_token'], 'client_id': [GMAIL['GMAIL_CLIENT_ID']],
+            'client_secret': [GMAIL['GMAIL_CLIENT_SECRET']], 'refresh_token': [GMAIL['GMAIL_REFRESH_TOKEN']]})
+        self.assertEqual(send_request.full_url, 'https://gmail.googleapis.com/gmail/v1/users/me/messages/send')
+        self.assertEqual(send_request.get_method(), 'POST')
+        self.assertEqual(send_request.get_header('Authorization'), 'Bearer fixture-access-not-real')
+        raw = json.loads(send_request.data)['raw']
+        message = BytesParser(policy=policy.default).parsebytes(base64.urlsafe_b64decode(raw + '=' * (-len(raw) % 4)))
+        self.assertEqual(parseaddr(str(message['From'])), ('BSRed', 'bsredpanguipulli@gmail.com'))
+        self.assertEqual(str(message['To']), 'receiver@example.invalid')
+        self.assertEqual(str(message['Subject']), 'Restablece tu contraseña de BSRed')
+        content = message.get_content()
+        self.assertIn('https://bsred.onrender.com/usuario#restablecer=fixture-reset-token', content)
+        self.assertIn('30 minutos', content)
+        for secret in (GMAIL['GMAIL_CLIENT_SECRET'], GMAIL['GMAIL_REFRESH_TOKEN'], 'fixture-access-not-real'):
+            self.assertNotIn(secret, message.as_string())
+        for call in build.call_args_list:
+            context = call.args[0]._context
+            self.assertEqual(context.verify_mode, ssl.CERT_REQUIRED)
+            self.assertTrue(context.check_hostname)
+            self.assertIsNone(call.args[1].redirect_request(None, None, 302, '', {}, 'https://attacker.invalid'))
+        smtp.assert_not_called()
+        smtp_ssl.assert_not_called()
+
+    def test_invalid_oauth_responses_do_not_attempt_to_send_mail(self):
+        for payload in ({'token_type': 'Bearer'}, {'access_token': '', 'token_type': 'Bearer'},
+                        {'access_token': 'fixture-access', 'token_type': 'Basic'},
+                        {'access_token': 'fixture\naccess', 'token_type': 'Bearer'},
+                        {'access_token': 'fixture-ñ-access', 'token_type': 'Bearer'},
+                        {'access_token': ['fixture-access'], 'token_type': 'Bearer'}, [], b'{invalid json'):
+            opener = MagicMock()
+            opener.open.return_value = self.response(payload)
+            with self.subTest(payload=payload), patch.object(cuentas, 'build_opener', return_value=opener):
+                with self.assertRaises((RuntimeError, json.JSONDecodeError)):
+                    cuentas._deliver_reset_email('receiver@example.invalid', 'fixture-reset-token', self.config())
+                self.assertEqual(opener.open.call_count, 1)
+
+    def test_oauth_refusal_does_not_attempt_to_send_mail(self):
+        opener = MagicMock()
+        opener.open.side_effect = HTTPError('https://oauth2.googleapis.com/token', 400, 'invalid_grant', {}, None)
+        with patch.object(cuentas, 'build_opener', return_value=opener):
+            with self.assertRaises(HTTPError):
+                cuentas._deliver_reset_email('receiver@example.invalid', 'fixture-reset-token', self.config())
+        self.assertEqual(opener.open.call_count, 1)
+
+    def test_gmail_requires_a_successful_send_response_with_message_id(self):
+        for send_response in (self.response({'error': {'message': 'denied'}}, status=403),
+                              self.response({}), self.response({'id': ''}), self.response(b'{invalid json')):
+            opener = MagicMock()
+            opener.open.side_effect = [self.response({'access_token': 'fixture-access', 'token_type': 'Bearer',
+                                                      'expires_in': 3600}), send_response]
+            with self.subTest(send_response=send_response), patch.object(cuentas, 'build_opener', return_value=opener):
+                with self.assertRaises((RuntimeError, json.JSONDecodeError)):
+                    cuentas._deliver_reset_email('receiver@example.invalid', 'fixture-reset-token', self.config())
+
+    def test_delivery_failure_logs_only_error_class_not_secrets_or_recovery_link(self):
+        app = MagicMock()
+        thread = MagicMock()
+
+        def immediate_thread(**kwargs):
+            kwargs['target']()
+            return thread
+
+        with patch.object(cuentas, '_deliver_reset_email', side_effect=RuntimeError('private-provider-details')), \
+                patch.object(cuentas.threading, 'Thread', side_effect=immediate_thread):
+            cuentas._queue_email(app, 'receiver@example.invalid', 'private-recovery-token', self.config())
+        app.logger.error.assert_called_once_with('No se pudo entregar recuperación de cuenta: %s', 'RuntimeError')
+        thread.start.assert_called_once_with()
 
 
 class AccountPostgresTests(unittest.TestCase):

@@ -1,6 +1,7 @@
 """Cambio y recuperación de claves, con enlaces de un uso y correo TLS."""
 from email.message import EmailMessage
-from email.utils import parseaddr
+from email.utils import formataddr, parseaddr
+import base64
 import hashlib
 import json
 import os
@@ -9,7 +10,7 @@ import secrets
 import smtplib
 import ssl
 import threading
-from urllib.parse import urlsplit
+from urllib.parse import urlencode, urlsplit
 from urllib.request import Request, build_opener, HTTPSHandler, HTTPRedirectHandler
 
 from flask import jsonify, request
@@ -57,15 +58,25 @@ def mail_configuration():
     key = os.environ.get('BREVO_API_KEY', '').strip()
     sender = os.environ.get('MAIL_FROM_EMAIL', '').strip()
     name = os.environ.get('MAIL_FROM_NAME', 'BSRed').strip()
-    if key and _valid_email(sender) and 1 <= len(name) <= 120 and not any(ord(c) < 32 for c in name):
+    gmail = {field: os.environ.get(variable, '').strip() for field, variable in {
+        'client_id': 'GMAIL_CLIENT_ID', 'client_secret': 'GMAIL_CLIENT_SECRET',
+        'refresh_token': 'GMAIL_REFRESH_TOKEN'}.items()}
+    gmail_requested = any(gmail.values())
+    if gmail_requested and not all(gmail.values()):
+        return None
+    provider = dict(gmail, provider='gmail') if gmail_requested else (
+        {'provider': 'brevo', 'api_key': key} if key else None)
+    if provider and _valid_email(sender) and 1 <= len(name) <= 120 and not any(ord(c) < 32 for c in name):
         base = os.environ.get('PUBLIC_BASE_URL', 'https://bsred.onrender.com').strip().rstrip('/')
         try:
             parts = urlsplit(base)
             if (parts.scheme == 'https' and parts.hostname and not parts.username and not parts.password
                     and not parts.query and not parts.fragment and parts.path in ('', '/')):
-                return {'provider': 'brevo', 'api_key': key, 'sender': sender, 'name': name, 'base_url': base}
+                return dict(provider, sender=sender, name=name, base_url=base)
         except ValueError:
             pass
+    if gmail_requested:
+        return None
     smtp = smtp_configuration()
     return dict(smtp, provider='smtp') if smtp else None
 
@@ -77,11 +88,15 @@ def _email_content(token, config):
             + '\n\nSi no hiciste esta solicitud, puedes ignorar el correo.\n')
 
 
-def _deliver_brevo_email(email, token, config):
+def _mail_opener():
     class NoRedirect(HTTPRedirectHandler):
         def redirect_request(self, req, fp, code, msg, headers, newurl):
             return None
 
+    return build_opener(HTTPSHandler(context=ssl.create_default_context()), NoRedirect())
+
+
+def _deliver_brevo_email(email, token, config):
     payload = {'sender': {'email': config['sender'], 'name': config['name']},
                'to': [{'email': email}], 'subject': 'Restablece tu contraseña de BSRed',
                'textContent': _email_content(token, config)}
@@ -89,14 +104,55 @@ def _deliver_brevo_email(email, token, config):
                   headers={'api-key': config['api_key'], 'Content-Type': 'application/json',
                            'Accept': 'application/json'},
                   data=json.dumps(payload, ensure_ascii=False).encode('utf-8'))
-    opener = build_opener(HTTPSHandler(context=ssl.create_default_context()), NoRedirect())
+    opener = _mail_opener()
     with opener.open(req, timeout=12) as response:
         if not 200 <= response.status < 300:
             raise RuntimeError('El proveedor de correo no aceptó el envío')
         response.read(65536)
 
 
+def _deliver_gmail_email(email, token, config):
+    """Envía desde la cuenta autorizada usando sólo el permiso gmail.send."""
+    opener = _mail_opener()
+    authorization = Request('https://oauth2.googleapis.com/token', method='POST',
+                            headers={'Content-Type': 'application/x-www-form-urlencoded',
+                                     'Accept': 'application/json'},
+                            data=urlencode({'grant_type': 'refresh_token',
+                                            'client_id': config['client_id'],
+                                            'client_secret': config['client_secret'],
+                                            'refresh_token': config['refresh_token']}).encode('ascii'))
+    with opener.open(authorization, timeout=12) as response:
+        if response.status != 200:
+            raise RuntimeError('Google no autorizó el envío de recuperación')
+        credentials = json.loads(response.read(65536))
+    access = credentials.get('access_token') if isinstance(credentials, dict) else None
+    token_type = credentials.get('token_type', '') if isinstance(credentials, dict) else ''
+    if (not isinstance(access, str) or not access or len(access) > 8192 or not access.isascii()
+            or any(c.isspace() or ord(c) < 32 for c in access)
+            or not isinstance(token_type, str) or token_type.lower() != 'bearer'):
+        raise RuntimeError('Google no devolvió una autorización válida')
+
+    message = EmailMessage()
+    message['From'] = formataddr((config['name'], config['sender']))
+    message['To'] = email
+    message['Subject'] = 'Restablece tu contraseña de BSRed'
+    message.set_content(_email_content(token, config))
+    raw = base64.urlsafe_b64encode(message.as_bytes()).decode('ascii')
+    req = Request('https://gmail.googleapis.com/gmail/v1/users/me/messages/send', method='POST',
+                  headers={'Authorization': 'Bearer ' + access, 'Content-Type': 'application/json',
+                           'Accept': 'application/json'},
+                  data=json.dumps({'raw': raw}).encode('utf-8'))
+    with opener.open(req, timeout=12) as response:
+        if response.status != 200:
+            raise RuntimeError('Gmail no aceptó el envío de recuperación')
+        result = json.loads(response.read(65536))
+    if not isinstance(result, dict) or not isinstance(result.get('id'), str) or not result['id'].strip():
+        raise RuntimeError('Gmail no confirmó el envío de recuperación')
+
+
 def _deliver_reset_email(email, token, config):
+    if config.get('provider') == 'gmail':
+        return _deliver_gmail_email(email, token, config)
     if config.get('provider') == 'brevo':
         return _deliver_brevo_email(email, token, config)
     message = EmailMessage()

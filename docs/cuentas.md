@@ -2,14 +2,19 @@ Las cuentas nuevas de chofer reciben una clave inicial con cambio obligatorio. L
 
 `POST /api/cuentas/password` recibe `password_actual` y `password_nuevo`. Verifica claves hash y cuentas antiguas sin devolver su contraseña, actualiza el hash y rota la cookie HttpOnly de la sesión actual. Revoca las otras sesiones, los avisos de todos los dispositivos, las credenciales Android y los enlaces de recuperación anteriores. Con un viaje activo responde 409: primero hay que finalizarlo.
 
-La recuperación requiere un proveedor de correo configurado. `GET /api/cuentas/config` informa `recuperacion_disponible`; si no hay proveedor, la interfaz lo explica y el endpoint devuelve 503 sin prometer un correo.
+La recuperación requiere un proveedor de correo configurado. `GET /api/cuentas/config` informa `recuperacion_disponible`; sólo comprueba la configuración local, no la autorización del proveedor ni la entrega. Si no hay proveedor, la interfaz lo explica y el endpoint devuelve 503 sin prometer un correo.
 
-Render gratuito bloquea las conexiones SMTP salientes en 25, 465 y 587. Para este servicio se recomienda Brevo por HTTPS:
+Para conservar exactamente `bsredpanguipulli@gmail.com` como remitente, usar Gmail API por HTTPS. Render gratuito bloquea SMTP saliente en 25, 465 y 587.
 
-1. Crear una cuenta en Brevo y verificar el remitente `bsredpanguipulli@gmail.com` siguiendo las instrucciones del proveedor. La entrega desde un dominio propio autenticado puede requerir configurar SPF/DKIM; la aceptación del remitente depende del proveedor.
-2. Crear una clave de API transaccional y guardarla en las variables privadas de Render como `BREVO_API_KEY`. No pegarla en el chat ni versionarla.
-3. Definir `MAIL_FROM_EMAIL=bsredpanguipulli@gmail.com`, `MAIL_FROM_NAME=BSRed` y `PUBLIC_BASE_URL=https://bsred.onrender.com`.
-4. Volver a desplegar el servicio y verificar el formulario con una cuenta propia. Las pruebas automatizadas usan transporte simulado y no mandan correos reales.
+1. Habilitar Gmail API en el proyecto Google Cloud `bsred-6e122` y crear un cliente OAuth de aplicación web con URI de redirección `https://developers.google.com/oauthplayground`.
+2. En OAuth Playground, usar ese cliente propio y autorizar únicamente `https://www.googleapis.com/auth/gmail.send`, iniciando sesión con **`bsredpanguipulli@gmail.com`**. Intercambiar el código por tokens.
+3. Guardar `GMAIL_CLIENT_ID`, `GMAIL_CLIENT_SECRET` y `GMAIL_REFRESH_TOKEN` sólo en Render. Definir también `MAIL_FROM_EMAIL=bsredpanguipulli@gmail.com`, `MAIL_FROM_NAME=BSRed` y `PUBLIC_BASE_URL=https://bsred.onrender.com`. No se usa la contraseña de Gmail ni la cuenta de servicio Firebase.
+4. Revisar el consentimiento OAuth: con una aplicación externa en estado Testing y este permiso, el refresh token caduca a los siete días. Para uso continuado, pasar a Production y completar la verificación que Google requiera. Los tokens también pueden revocarse o caducar por otras causas.
+5. Volver a desplegar y consultar la configuración. Verificar la entrega del formulario con una cuenta propia; las pruebas automatizadas sustituyen el transporte y no envían correos.
+
+Los pasos completos están en [Activar Gmail](activar-servicios.md#correo-desde-gmail-por-https).
+
+Brevo sigue disponible por HTTPS mediante `BREVO_API_KEY`, `MAIL_FROM_EMAIL`, `MAIL_FROM_NAME` y `PUBLIC_BASE_URL`, con un remitente y dominio autenticados. [Brevo sustituye los remitentes de dominios gratuitos, incluido Gmail](https://help.brevo.com/hc/en-us/articles/14925263522578-Comply-with-Gmail-Yahoo-and-Microsoft-s-requirements-for-email-senders), incluso en correo transaccional, por una dirección de su propio dominio. Por eso esa opción no conserva el remitente Gmail exacto.
 
 Como alternativa en un alojamiento que permita SMTP, se admiten `SMTP_HOST`, `SMTP_PORT`, `SMTP_USER`, `SMTP_PASSWORD` y `SMTP_FROM`. Puerto 465 usa TLS desde la conexión; 587 exige STARTTLS. Se verifica el certificado y no se permite una alternativa sin cifrado.
 

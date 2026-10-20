@@ -24,12 +24,36 @@ Si registraste varias aplicaciones, elige el cliente cuyo `package_name` sea `co
 
 No se necesita incluir `google-services.json` en el proyecto Android: esta versión inicializa Firebase con la configuración pública que proporciona BSRed por HTTPS. Para actualizar una aplicación ya instalada, conserva la firma original.
 
-## Correo con Brevo por HTTPS
+## Correo desde Gmail por HTTPS
 
-El plan gratuito de Render restringe las conexiones SMTP convencionales. El envío por API HTTPS permite conservar el alojamiento actual.
+Para enviar recuperación desde **`bsredpanguipulli@gmail.com`**, usar Gmail API con OAuth. El plan gratuito de Render restringe SMTP; la API usa HTTPS. La cuenta Google que administra Firebase puede ser distinta de la cuenta Gmail remitente.
+
+1. En el proyecto [`bsred-6e122`, habilita Gmail API](https://console.cloud.google.com/apis/library/gmail.googleapis.com?project=bsred-6e122).
+2. Configura el consentimiento en **Google Auth Platform** y solicita únicamente `https://www.googleapis.com/auth/gmail.send`, que permite enviar sin leer el buzón. Si el estado es **Testing**, añade `bsredpanguipulli@gmail.com` como usuario de prueba.
+3. Crea un cliente OAuth de tipo **Aplicación web**. Añade exactamente `https://developers.google.com/oauthplayground` a sus URI de redirección autorizadas.
+4. Abre [OAuth Playground](https://developers.google.com/oauthplayground). En el engranaje, activa **Use your own OAuth credentials** e introduce el ID y secreto de ese cliente. Autoriza el permiso `https://www.googleapis.com/auth/gmail.send` con la cuenta **`bsredpanguipulli@gmail.com`**.
+5. Pulsa **Exchange authorization code for tokens**. Guarda el refresh token y las credenciales del cliente sólo en **Render → BSRed → Environment**:
+
+| Variable | Valor |
+| --- | --- |
+| `GMAIL_CLIENT_ID` | ID del cliente OAuth propio |
+| `GMAIL_CLIENT_SECRET` | Secreto de ese cliente, guardado sólo en Render |
+| `GMAIL_REFRESH_TOKEN` | Refresh token autorizado por la cuenta remitente, guardado sólo en Render |
+| `MAIL_FROM_EMAIL` | `bsredpanguipulli@gmail.com` |
+| `MAIL_FROM_NAME` | `BSRed` |
+| `PUBLIC_BASE_URL` | `https://bsred.onrender.com` |
+
+6. Para uso continuado, revisa el estado de publicación OAuth. En una aplicación externa en **Testing**, el refresh token para este permiso caduca a los siete días. Usa **Production** y completa la verificación que Google requiera; los tokens siguen sujetos a revocación y otras causas de caducidad. Consulta [la documentación de expiración OAuth](https://developers.google.com/identity/protocols/oauth2#expiration).
+7. Guarda las variables y despliega el servicio. `GET /api/cuentas/config` sólo comprueba que exista configuración válida; no demuestra autorización de Google ni entrega. Verifica la entrega con una cuenta propia.
+
+El remitente debe ser la cuenta que autorizó OAuth. No se necesita su contraseña de Gmail ni una clave de cuenta de servicio Firebase. Los secretos OAuth y refresh tokens no se adjuntan al chat ni se guardan en el repositorio. Las pruebas automatizadas no envían correos.
+
+## Alternativa: correo con Brevo por HTTPS
+
+Brevo permite usar un dominio propio autenticado. [Sustituye los remitentes Gmail y otros dominios gratuitos](https://help.brevo.com/hc/en-us/articles/14925263522578-Comply-with-Gmail-Yahoo-and-Microsoft-s-requirements-for-email-senders), también en mensajes transaccionales, por una dirección como `nombre@ID.t-sender-sib.com`. Para conservar `bsredpanguipulli@gmail.com`, utiliza Gmail API.
 
 1. Crea una cuenta en https://www.brevo.com/ y verifica el correo de la aplicación.
-2. Configura un remitente con nombre **BSRed** y tu dirección `bsredpanguipulli@gmail.com`. Completa la verificación que solicite el proveedor. Si el proveedor exige una dirección de un dominio propio, utiliza una dirección verificada de ese dominio.
+2. Configura un remitente con nombre **BSRed** y una dirección de tu dominio propio. Completa la verificación del remitente y la autenticación del dominio que solicite el proveedor.
 3. En la sección **SMTP y API → API keys**, crea una clave de API.
 4. Añade en Render:
 
