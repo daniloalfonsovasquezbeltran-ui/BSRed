@@ -2,16 +2,18 @@
 <html lang="es">
 <head>
     <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
     <link rel="manifest" href="/manifest.json">
     <link rel="apple-touch-icon" href="/logo_192.png">
     <meta name="theme-color" content="#0b1220">
     <meta name="apple-mobile-web-app-capable" content="yes">
     <title>Panel de Control - BSRed Terminal Panguipulli</title>
+    <script src="/entorno.js?v=movil-20261021"></script>
     <!-- Tailwind CSS -->
     <script src="/telemetria.js" defer></script>
     <script src="/favoritos.js" defer></script>
     <link rel="stylesheet" href="/styles.css">
+    <link rel="stylesheet" href="/panel-responsive.css?v=movil-20261021">
     <link rel="stylesheet" href="/privacidad-aviso.css">
     <script src="/privacidad-aviso.js" defer></script>
     <script src="/offline.js" defer></script>
@@ -28,10 +30,10 @@
 
     <a href="#contenido-panel" class="skip-link">Saltar al contenido del panel</a>
     <!-- BARRA LATERAL -->
-    <aside class="w-full md:w-64 bg-slate-900 border-r border-slate-800 flex flex-col justify-between z-20 shrink-0">
+    <aside class="panel-sidebar w-full md:w-64 bg-slate-900 border-r border-slate-800 flex flex-col justify-between z-20 shrink-0" aria-label="Cuenta y navegación">
         <div>
             <!-- Perfil del usuario -->
-            <div class="p-6 text-center border-b border-slate-800">
+            <div class="panel-perfil p-6 text-center border-b border-slate-800">
                 <div class="w-20 h-20 mx-auto mb-3 rounded-full bg-slate-800 border-2 border-blue-500 flex items-center justify-center text-3xl shadow-lg shadow-blue-500/10" id="avatar-container">
                     👤
                 </div>
@@ -42,7 +44,7 @@
             </div>
 
             <!-- Navegación -->
-            <nav class="p-4 space-y-1.5 text-sm">
+            <nav class="panel-nav p-4 space-y-1.5 text-sm" aria-label="Secciones de tu cuenta">
                 <button onclick="cambiarSeccion('dashboard')" id="nav-dashboard" class="w-full flex items-center gap-3 px-4 py-3 rounded-xl bg-blue-600 text-white font-semibold transition shadow-lg shadow-blue-600/20">
                     <span>📊</span> <span>Dashboard</span>
                 </button>
@@ -63,7 +65,7 @@
         </div>
 
         <!-- Botón Salir -->
-        <div class="p-4 border-t border-slate-800">
+        <div class="panel-salida p-4 border-t border-slate-800">
             <button id="btn-cerrar-sesion" onclick="cerrarSesion()" class="w-full flex items-center justify-center gap-2 px-4 py-2.5 bg-red-500/10 hover:bg-red-500/20 text-red-400 border border-red-500/30 text-xs font-bold rounded-xl transition">
                 <span>🚪</span> Cerrar Sesión
             </button>
@@ -74,7 +76,7 @@
     <main id="contenido-panel" tabindex="-1" class="flex-1 p-4 md:p-8 overflow-y-auto custom-scrollbar">
 
         <!-- Header Superior -->
-        <header class="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4 mb-6">
+        <header class="panel-encabezado flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4 mb-6">
             <div>
                 <h1 class="text-2xl font-black text-white tracking-tight">Sistema BSRed Terminal</h1>
                 <p class="text-xs text-slate-400">Panguipulli, Región de Los Ríos</p>
@@ -83,7 +85,7 @@
                 📅 <span id="fecha-actual"></span>
             </div>
         </header>
-        <div class="op-actions mb-4"><div data-accesibilidad></div><p data-estado-conexion class="text-sm text-slate-300" role="status"></p></div>
+        <div class="panel-herramientas op-actions mb-4"><div data-accesibilidad></div><p data-estado-conexion class="text-sm text-slate-300" role="status"></p></div>
         <p id="session-status" class="mb-2 text-sm text-slate-400" role="status">Verificando sesión...</p>
         <button id="session-reintentar" onclick="iniciarPanel()" class="hidden mb-6 text-sm text-blue-400 underline">Reintentar conexión</button>
 
@@ -187,7 +189,7 @@
                 <div class="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4 mb-6">
                     <h3 class="font-bold text-lg text-white">Gestión de Horarios y Recorridos</h3>
                 </div>
-                <div class="overflow-x-auto">
+                <div class="overflow-x-auto" tabindex="0" role="region" aria-label="Horarios de la empresa">
                     <table class="w-full text-left text-xs">
                         <thead class="bg-slate-800 text-slate-300 uppercase font-semibold">
                             <tr>

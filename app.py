@@ -205,6 +205,7 @@ def public_asset(filename):
     if filename not in {
         'index.html', 'usuario.html', 'privacidad.html', 'privacidad-aviso.js', 'privacidad-aviso.css',
         'manifest.json', 'sw.js', 'telemetria.js', 'mapa-rutas.js', 'favoritos.js',
+        'entorno.js', 'horarios.css', 'panel-responsive.css',
         'logo.jpg', 'logo_192.png', 'logo_512.png', 'choferes.js'
         , 'operaciones.js', 'cuentas.js', 'nativo-notificaciones.js', 'accesibilidad.js',
         'offline.js', 'offline.html', 'styles.css', 'leaflet.js', 'leaflet.css',

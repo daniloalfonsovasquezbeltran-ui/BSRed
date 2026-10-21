@@ -1,0 +1,7 @@
+La portada prioriza los horarios: panel más ancho en escritorio, horas destacadas y filtros secundarios plegados. En vista compacta, la lista y el mapa ocupan el espacio disponible mediante los botones «Horarios» y «Mapa». Cambiar de vista conserva el recorrido seleccionado y ajusta el tamaño de Leaflet sin volver a consultar trazados.
+
+`entorno.js` distingue el canal de presentación mediante el puente `BSRedAndroid`, el modo de aplicación instalada del navegador y las capacidades de pantalla. Expone `BSRedEntorno.obtener()` con `canal` (`android`, `pwa` o `web`), `compacto`, `movil` y `tactil`. Actualiza `data-canal` y `data-compacto` en el documento y emite `bsred:entorno` al cambiar el estado.
+
+El diseño compacto utiliza el ancho disponible y las señales móviles/táctiles para incluir teléfonos en horizontal. El panel de usuario también compacta su perfil y navegación. Los estilos respetan áreas seguras, permiten desplazarse en la lista y dejan desplazamiento horizontal sólo en tablas y navegación cuando hace falta.
+
+Esta detección adapta la presentación. No autentica usuarios, no concede permisos nativos ni registra identificadores adicionales en el servidor. La app Android que ya incluye el puente puede utilizar la vista adaptada sin cambios de APK; si un navegador no ofrece una señal de instalación o de integración nativa, sigue recibiendo el diseño correspondiente a su pantalla.
