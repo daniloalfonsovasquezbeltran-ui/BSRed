@@ -14,7 +14,7 @@
     <script src="/mapa-rutas.js" defer></script>
     <script src="/favoritos.js" defer></script>
     <link rel="stylesheet" href="/styles.css">
-    <link rel="stylesheet" href="/horarios.css?v=movil-20261021">
+    <link rel="stylesheet" href="/horarios.css?v=responsive-20261021">
     <link rel="stylesheet" href="/privacidad-aviso.css">
     <script src="/privacidad-aviso.js" defer></script>
     <script src="/offline.js" defer></script>
@@ -32,22 +32,16 @@
         .boton-favorito:disabled { opacity: .5; cursor: wait; }
     </style>
 </head>
-<body class="pagina-horarios bg-slate-950 text-slate-100 h-screen w-screen overflow-hidden flex flex-col md:flex-row relative" data-vista="horarios">
+<body data-vista="horarios" class="pagina-horarios bg-slate-950 text-slate-100 h-screen w-screen overflow-hidden flex flex-col md:flex-row relative">
 
     <a href="#lista-horarios" class="skip-link">Saltar a los horarios</a>
-    <nav class="movil-navegacion" aria-label="Vistas principales">
-        <button id="nav-horarios" type="button" aria-pressed="true" aria-controls="panel-lateral" onclick="mostrarVistaMovil('horarios', true)">
-            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" aria-hidden="true"><rect x="4" y="3" width="16" height="18" rx="3"/><path d="M8 8h8M8 12h8M8 16h5"/></svg>
-            Horarios
-        </button>
-        <button id="nav-mapa" type="button" aria-pressed="false" aria-controls="panel-mapa" onclick="mostrarVistaMovil('mapa', true)">
-            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" aria-hidden="true"><path d="m3 6 6-3 6 3 6-3v15l-6 3-6-3-6 3V6Zm6-3v15m6-12v15"/></svg>
-            Mapa
-        </button>
-    </nav>
+    <!-- BOTÓN FLOTANTE MÓVIL -->
+    <button id="btn-vista-movil" type="button" onclick="toggleVistaMovil()" aria-controls="panel-mapa" aria-expanded="false" class="md:hidden fixed bottom-4 left-4 z-[1100] bg-blue-600 hover:bg-blue-500 text-white px-3 py-2 rounded-xl text-xs font-bold shadow-2xl flex items-center gap-1.5 transition">
+        <span id="btn-movil-icono">🗺️</span> <span id="btn-movil-txt">Ver Mapa</span>
+    </button>
 
     <!-- PANEL IZQUIERDO -->
-    <main aria-label="Horarios de buses" id="panel-lateral" class="w-full md:w-[440px] h-full bg-slate-900 border-r border-slate-800 flex flex-col z-10 shadow-2xl absolute md:relative transition-all duration-300">
+    <aside id="panel-lateral" class="w-full md:w-[440px] h-full bg-slate-900 border-r border-slate-800 flex flex-col z-10 shadow-2xl absolute md:relative transition-all duration-300">
         
         <!-- Header con Botón de Usuario -->
         <header class="p-4 border-b border-slate-800 bg-slate-900 flex items-center justify-between pl-4">
@@ -64,78 +58,78 @@
 
         <!-- VISTA DE RUTAS -->
         <div id="vista-rutas-publica" class="flex-1 flex flex-col overflow-hidden">
-            <div class="horarios-controles">
-                <div class="horarios-titulo">
-                    <h2>Horarios de buses</h2>
-                    <span id="total-horarios" class="horarios-total">0 recorridos</span>
+            <div class="controles-horarios p-4 border-b border-slate-800 space-y-3">
+                <div class="flex bg-slate-800 p-1 rounded-lg text-xs font-semibold">
+                    <button id="tab-salidas" type="button" aria-pressed="true" onclick="cambiarTab('salidas')"
+                            class="flex-1 py-1.5 rounded-md bg-blue-600 text-white transition shadow font-bold">
+                        📤 Salidas
+                    </button>
+                    <button id="tab-llegadas" type="button" aria-pressed="false" onclick="cambiarTab('llegadas')"
+                            class="flex-1 py-1.5 rounded-md text-slate-400 hover:text-white transition">
+                        📥 Llegadas
+                    </button>
                 </div>
-                <div class="horarios-tabs" aria-label="Tipo de horario">
-                    <button id="tab-salidas" type="button" onclick="cambiarTab('salidas')" aria-pressed="true">Salidas</button>
-                    <button id="tab-llegadas" type="button" onclick="cambiarTab('llegadas')" aria-pressed="false">Llegadas</button>
-                </div>
+
                 <label class="sr-only" for="busqueda">Buscar destino, empresa o andén</label>
-                <input id="busqueda" type="search" placeholder="Buscar destino, empresa o andén…" oninput="onBusquedaChange()" autocomplete="off">
-                <div class="horarios-herramientas">
-                    <details class="filtros-avanzados" id="filtros-horarios">
-                        <summary>Filtrar recorridos <span id="total-filtros" class="filtros-cantidad" hidden></span></summary>
-                        <div class="filtros-panel">
-                            <div class="op-grid">
-                                <label class="op-field">Fecha · Chile<input id="filtro-fecha" type="date" onchange="cargarDatosAPI()"></label>
-                                <label class="op-field">Empresa<select id="filtro-empresa" onchange="aplicarFiltros()"><option value="">Todas</option></select></label>
-                                <label class="op-field">Destino<select id="filtro-destino" onchange="aplicarFiltros()"><option value="">Todos</option></select></label>
-                                <label class="op-field">Sentido<select id="filtro-sentido" onchange="aplicarFiltros()"><option value="">Todos</option><option value="ida">Ida</option><option value="vuelta">Vuelta</option></select></label>
-                                <label class="op-field">Desde las<input id="filtro-desde" type="time" onchange="aplicarFiltros()"></label>
-                                <label class="op-field">Hasta las<input id="filtro-hasta" type="time" onchange="aplicarFiltros()"></label>
-                            </div>
-                            <div class="op-actions mt-3">
-                                <label><input id="filtro-favoritos" type="checkbox" onchange="aplicarFiltros()"> Solo favoritos</label>
-                                <label><input id="filtro-gps" type="checkbox" onchange="aplicarFiltros()"> Solo GPS conectado</label>
-                            </div>
-                            <button type="button" onclick="limpiarFiltros()" class="horarios-limpiar">Limpiar filtros</button>
-                        </div>
-                    </details>
-                    <details class="horarios-opciones">
-                        <summary>Más opciones</summary>
-                        <div class="opciones-panel">
-                            <a href="/usuario#favoritos">Mis favoritos</a>
-                            <a href="/privacidad.html">Política de privacidad</a>
-                            <div data-accesibilidad></div>
-                        </div>
-                    </details>
-                </div>
-                <p id="horarios-actualizacion" role="status" aria-live="polite"></p>
-                <p data-estado-conexion role="status"></p>
+                <input id="busqueda" type="search" placeholder="Buscar destino, empresa o andén..."
+                       oninput="onBusquedaChange()"
+                       class="w-full bg-slate-800 border border-slate-700 rounded-lg px-3 py-2 text-sm text-white focus:outline-none focus:border-blue-500">
+
+                <details class="filtros-avanzados">
+                    <summary>Filtrar recorridos</summary>
+                    <div class="op-grid mt-3">
+                        <label class="op-field">Fecha · Chile<input id="filtro-fecha" type="date" onchange="cargarDatosAPI()"></label>
+                        <label class="op-field">Empresa<select id="filtro-empresa" onchange="aplicarFiltros()"><option value="">Todas</option></select></label>
+                        <label class="op-field">Destino<select id="filtro-destino" onchange="aplicarFiltros()"><option value="">Todos</option></select></label>
+                        <label class="op-field">Sentido<select id="filtro-sentido" onchange="aplicarFiltros()"><option value="">Todos</option><option value="ida">Ida</option><option value="vuelta">Vuelta</option></select></label>
+                        <label class="op-field">Desde las<input id="filtro-desde" type="time" onchange="aplicarFiltros()"></label>
+                        <label class="op-field">Hasta las<input id="filtro-hasta" type="time" onchange="aplicarFiltros()"></label>
+                    </div>
+                    <div class="op-actions mt-3">
+                        <label><input id="filtro-favoritos" type="checkbox" onchange="aplicarFiltros()"> Solo favoritos</label>
+                        <label><input id="filtro-gps" type="checkbox" onchange="aplicarFiltros()"> Solo GPS conectado</label>
+                    </div>
+                    <button type="button" onclick="limpiarFiltros()" class="text-blue-300 underline text-sm mt-3">Limpiar filtros</button>
+                </details>
+                <p id="horarios-actualizacion" class="text-xs text-slate-300" role="status" aria-live="polite"></p>
+                <div data-accesibilidad></div>
+                <button id="btn-reset" type="button" onclick="seleccionarHorario(null)" aria-pressed="true" aria-controls="map"
+                        class="vista-todos w-full py-1.5 px-3 text-xs font-semibold rounded-lg border transition flex items-center justify-center gap-1">
+                    🌐 Todos los recorridos (<span id="txt-tab-actual">Salidas</span>)
+                </button>
             </div>
-            <p id="favoritos-mapa-estado" class="horarios-ayuda" role="status" aria-live="polite">Marca ★ para guardar un recorrido.</p>
+
+            <div class="px-4 pt-3 flex items-center justify-between gap-2 text-xs">
+                <p id="favoritos-mapa-estado" class="text-slate-400" role="status" aria-live="polite">Marca ★ para guardar un recorrido.</p>
+                <a href="/usuario#favoritos" class="text-blue-400 font-semibold whitespace-nowrap">Mis favoritos</a>
+            </div>
+            <p data-estado-conexion class="px-4 pt-2 text-xs text-slate-300" role="status"></p>
             <div id="avisos-publicos" class="px-4 pt-2" aria-live="polite"></div>
             <div id="lista-horarios" tabindex="-1" aria-label="Recorridos disponibles" class="flex-1 overflow-y-auto p-4 space-y-3 custom-scrollbar"></div>
         </div>
         <footer class="shrink-0 px-4 py-3 border-t border-slate-800 text-xs text-slate-400 text-right">
             <a href="/privacidad.html" class="underline text-blue-300">Política de privacidad</a>
         </footer>
-    </main>
+    </aside>
 
     <!-- PANEL DERECHO: RECORRIDOS Y UBICACIÓN ESTIMADA -->
-    <section id="panel-mapa" aria-label="Mapa de recorridos" class="flex-1 h-full relative bg-slate-950">
+    <main id="panel-mapa" aria-label="Mapa de recorridos" class="flex-1 h-full relative bg-slate-950">
         <div id="map" class="w-full h-full"></div>
 
-        <div class="mapa-resumen absolute top-4 right-4 z-[1000] max-w-[85%] bg-slate-900/90 border border-slate-800 p-3 rounded-xl backdrop-blur text-xs space-y-1 shadow-lg">
+        <div class="resumen-mapa absolute top-4 right-4 z-[1000] max-w-[85%] bg-slate-900/90 border border-slate-800 p-3 rounded-xl backdrop-blur text-xs space-y-1 shadow-lg">
             <p id="vista-mapa" class="mapa-vista-titulo" data-vista="todos">Todos los recorridos</p>
             <p id="resumen-vista" class="text-[11px] text-slate-300" aria-live="polite">Vista general de los recorridos según los filtros.</p>
             <div class="flex items-center gap-2">
                 <span id="indicador-pulso" class="w-3 h-3 rounded-full bg-blue-500 animate-pulse"></span>
                 <span id="estado-mapa" class="font-medium text-slate-200">Cargando mapa...</span>
             </div>
-            <button id="btn-reset" type="button" onclick="seleccionarHorario(null)" aria-pressed="true" aria-controls="map" class="vista-todos">
-                Todos los recorridos (<span id="txt-tab-actual">Salidas</span>)
-            </button>
             <p class="text-[11px] text-slate-300 font-semibold">Ubicación estimada por horario</p>
             <p class="text-[10px] text-slate-400">Trazado por carretera aproximado</p>
             <p class="text-[10px] text-slate-400">El bus aparece entre su salida y llegada programadas. La posición puede diferir de la real.</p>
             <div id="info-detalle-ruta" class="text-[11px] text-slate-400 hidden"></div>
             <button id="btn-reintentar-mapa" type="button" onclick="recargarTrazados()" class="hidden text-blue-400 underline text-[11px]">Reintentar trazados</button>
         </div>
-    </section>
+    </main>
 
     <!-- MODAL DE AUTENTICACIÓN -->
     <div id="modal-auth" role="dialog" aria-modal="true" aria-label="Acceso a tu cuenta" class="fixed inset-0 bg-slate-950/80 backdrop-blur-sm z-[2000] flex items-center justify-center p-4 hidden">
@@ -229,7 +223,7 @@
         const estadosRutas = new Map();
         let itemSeleccionadoIndex = null;
         let mostrandoMapaMovil = false;
-        let esperaAjusteMapa;
+        let ajusteMapaPendiente;
 
         let usuarioSesion = null;
         let favoritosControl = null;
@@ -395,66 +389,41 @@
         }
 
         function ajustarMapaVisible() {
-            clearTimeout(esperaAjusteMapa);
-            esperaAjusteMapa = setTimeout(() => {
+            clearTimeout(ajusteMapaPendiente);
+            ajusteMapaPendiente = setTimeout(() => {
                 if (!map) return;
                 map.invalidateSize({ pan: false });
                 if (mapaRutas) mapaRutas.seleccionar(itemSeleccionadoIndex == null ? null : datosHorarios[itemSeleccionadoIndex]?.id ?? null);
-            }, 90);
+            }, 100);
         }
 
-        function mostrarVistaMovil(vista, enfocar = false) {
+        function mostrarVistaMovil(mapaVisible, enfocar = false) {
             const compacto = vistaCompacta();
-            mostrandoMapaMovil = compacto && vista === 'mapa';
+            mostrandoMapaMovil = compacto && mapaVisible;
             document.body.dataset.vista = mostrandoMapaMovil ? 'mapa' : 'horarios';
             for (const [id, oculto] of [['panel-lateral', compacto && mostrandoMapaMovil], ['panel-mapa', compacto && !mostrandoMapaMovil]]) {
                 const panel = document.getElementById(id);
                 panel.inert = oculto;
                 if (oculto) panel.setAttribute('aria-hidden', 'true'); else panel.removeAttribute('aria-hidden');
             }
-            document.getElementById('nav-horarios').setAttribute('aria-pressed', String(!mostrandoMapaMovil));
-            document.getElementById('nav-mapa').setAttribute('aria-pressed', String(mostrandoMapaMovil));
-            if (mostrandoMapaMovil) for (const detalle of document.querySelectorAll('.horarios-herramientas > details')) detalle.open = false;
+            document.getElementById('btn-movil-icono').textContent = mostrandoMapaMovil ? '📋' : '🗺️';
+            document.getElementById('btn-movil-txt').textContent = mostrandoMapaMovil ? 'Ver Panel' : 'Ver Mapa';
+            document.getElementById('btn-vista-movil').setAttribute('aria-expanded', String(mostrandoMapaMovil));
             ajustarMapaVisible();
-            if (enfocar && compacto) document.getElementById(mostrandoMapaMovil ? 'map' : 'lista-horarios').focus({ preventScroll: true });
+            if (compacto && enfocar) document.getElementById(mostrandoMapaMovil ? 'map' : 'lista-horarios').focus({ preventScroll: true });
         }
 
-        function ajustarDesplegables() {
-            for (const detalle of document.querySelectorAll('.horarios-herramientas > details[open]')) {
-                const panel = detalle.querySelector('.filtros-panel, .opciones-panel');
-                const limite = document.getElementById('vista-rutas-publica').getBoundingClientRect().bottom;
-                panel.style.maxHeight = `${Math.min(430, Math.max(80, limite - panel.getBoundingClientRect().top - 12))}px`;
-            }
-        }
-        for (const detalle of document.querySelectorAll('.horarios-herramientas > details')) {
-            detalle.addEventListener('toggle', () => {
-                if (!detalle.open) return;
-                for (const otro of document.querySelectorAll('.horarios-herramientas > details')) if (otro !== detalle) otro.open = false;
-                ajustarDesplegables();
-            });
-        }
-        document.addEventListener('click', event => {
-            if (event.target.closest('.horarios-herramientas')) return;
-            for (const detalle of document.querySelectorAll('.horarios-herramientas > details[open]')) detalle.open = false;
-        });
+        function toggleVistaMovil() { mostrarVistaMovil(!mostrandoMapaMovil, true); }
 
         function actualizarTamanoVista() {
             const viewport = window.visualViewport;
             const alto = viewport && viewport.scale === 1 ? viewport.height : window.innerHeight;
             document.documentElement.style.setProperty('--alto-visible', `${Math.round(alto)}px`);
-            document.documentElement.classList.toggle('vista-baja', alto <= 500);
-            mostrarVistaMovil(mostrandoMapaMovil ? 'mapa' : 'horarios');
-            ajustarDesplegables();
+            mostrarVistaMovil(mostrandoMapaMovil);
         }
         document.addEventListener('bsred:entorno', actualizarTamanoVista);
         window.addEventListener('resize', actualizarTamanoVista);
         if (window.visualViewport) window.visualViewport.addEventListener('resize', actualizarTamanoVista);
-        document.addEventListener('keydown', event => {
-            if (event.key !== 'Escape') return;
-            for (const detalle of document.querySelectorAll('.horarios-herramientas > details[open]')) {
-                detalle.open = false; detalle.querySelector('summary').focus();
-            }
-        });
 
         function mostrarEstadoMapa(estado) {
             document.getElementById('estado-mapa').textContent = estado.texto;
@@ -481,9 +450,6 @@
             const empresa = document.getElementById('filtro-empresa').value, destino = document.getElementById('filtro-destino').value;
             const sentido = document.getElementById('filtro-sentido').value, desde = document.getElementById('filtro-desde').value, hasta = document.getElementById('filtro-hasta').value;
             const soloFavoritos = document.getElementById('filtro-favoritos').checked, soloGPS = document.getElementById('filtro-gps').checked;
-            const cantidadFiltros = [empresa, destino, sentido, desde, hasta, soloFavoritos, soloGPS, document.getElementById('filtro-fecha').value !== fechaChile()].filter(Boolean).length;
-            const contadorFiltros = document.getElementById('total-filtros');
-            contadorFiltros.textContent = String(cantidadFiltros); contadorFiltros.hidden = cantidadFiltros === 0;
             const seleccion = itemSeleccionadoIndex == null ? null : datosHorarios[itemSeleccionadoIndex]?.id;
             const anteriores = datosHorarios.map(row => row.id).join(',');
             datosHorarios = horariosBase.filter(row => {
@@ -521,8 +487,7 @@
                 if (version !== versionHorarios) return;
                 horariosBase = datos; horariosGuardados = false;
                 if (window.BSRedOffline) BSRedOffline.guardarHorarios(tab, datos, fecha);
-                estado.textContent = `${fecha === fechaChile() ? 'Hoy' : fecha} · Actualizado a las ${new Date().toLocaleTimeString('es-CL', { timeZone: 'America/Santiago', hour: '2-digit', minute: '2-digit' })}`;
-                estado.title = `Horarios para ${fecha}. Hora de Chile.`;
+                estado.textContent = `Horarios para ${fecha} · Actualizados a las ${new Date().toLocaleTimeString('es-CL', { timeZone: 'America/Santiago' })} (Chile).`;
             } catch (_) {
                 if (version !== versionHorarios) return;
                 const cache = window.BSRedOffline ? BSRedOffline.leerHorarios(tab, fecha) : null;
@@ -592,9 +557,6 @@
 
         function renderizarLista(cargando = false, error = '') {
             const contenedor = document.getElementById('lista-horarios');
-            const total = document.getElementById('total-horarios');
-            if (total) total.textContent = `${datosHorarios.length} ${datosHorarios.length === 1 ? 'recorrido' : 'recorridos'}`;
-            const desplazamiento = contenedor.scrollTop;
             contenedor.replaceChildren();
             actualizarVistaMapa();
             if (!datosHorarios.length) {
@@ -602,76 +564,45 @@
                     error || (cargando ? 'Cargando horarios...' : 'No se encontraron recorridos.')));
                 return;
             }
-
             const paleta = currentTab === 'salidas' ? PALETA_SALIDAS : PALETA_LLEGADAS;
             datosHorarios.forEach((item, index) => {
-                const tarjeta = crearTexto('article', 'horario-tarjeta', '');
-                tarjeta.dataset.seleccionado = String(itemSeleccionadoIndex === index);
-
+                const tarjeta = document.createElement('div');
                 const seleccionar = document.createElement('button');
                 seleccionar.type = 'button';
-                seleccionar.className = 'horario-seleccionar';
+                seleccionar.className = 'seleccionar-horario flex-1 min-w-0 text-left flex justify-between items-center gap-2';
                 seleccionar.setAttribute('aria-pressed', String(itemSeleccionadoIndex === index));
                 seleccionar.setAttribute('aria-label', `Ver recorrido ${item.origen || ''} a ${item.destino || ''} en el mapa`);
-                seleccionar.onclick = () => {
-                    seleccionarHorario(index);
-                    const entorno = window.BSRedEntorno && window.BSRedEntorno.obtener();
-                    if (entorno && entorno.compacto) mostrarVistaMovil('mapa', true);
-                };
-
-                const tiempo = crearTexto('div', 'horario-tiempo', '');
-                tiempo.id = `hora-recorrido-${item.id}`;
-                const horaValor = String((currentTab === 'salidas' ? item.salida : item.llegada) || '').match(/^(\d{1,2}):(\d{2})/);
-                const horaTexto = horaValor ? `${horaValor[1].padStart(2, '0')}:${horaValor[2]}` : '—';
-                tiempo.append(crearTexto('span', 'horario-hora', horaTexto),
-                    crearTexto('span', 'horario-etiqueta', currentTab === 'salidas' ? 'Salida' : 'Llegada'));
-
-                const detalle = crearTexto('div', 'horario-detalle', '');
-                const recorrido = crearTexto('h3', 'horario-recorrido', `${item.origen || ''} → ${item.destino || ''}`);
-                const empresa = crearTexto('p', 'horario-empresa', '');
-                empresa.id = `empresa-recorrido-${item.id}`;
-                seleccionar.setAttribute('aria-describedby', `${tiempo.id} ${empresa.id}`);
+                tarjeta.dataset.seleccionado = String(itemSeleccionadoIndex === index);
+                tarjeta.className = `tarjeta-horario w-full text-left p-4 rounded-xl border transition cursor-pointer flex justify-between items-center ${
+                    itemSeleccionadoIndex === index ? 'bg-slate-800 border-blue-500 ring-2 ring-blue-500/30' : 'bg-slate-800/60 border-slate-700/60 hover:border-slate-500'}`;
+                seleccionar.onclick = () => seleccionarHorario(index);
+                const detalle = crearTexto('div', 'detalle-horario space-y-1', '');
+                detalle.id = `detalle-horario-${item.id}`;
+                const cabecera = crearTexto('div', 'cabecera-horario flex items-center gap-2', '');
                 const punto = crearTexto('span', 'w-3 h-3 shrink-0 rounded-full', '');
-                punto.setAttribute('aria-hidden', 'true');
                 punto.style.backgroundColor = paleta[index % paleta.length];
-                empresa.append(punto, crearTexto('span', '', item.empresa || 'Servicio de buses'),
-                    crearTexto('span', '', `· Andén ${item.anden || 'sin asignar'}`));
-
-                const metadatos = [item.sentido === 'vuelta' ? 'Vuelta' : 'Ida', item.dias || 'Días sin informar'];
-                if (item.precio != null && Number.isFinite(Number(item.precio))) {
-                    metadatos.push('$' + Number(item.precio).toLocaleString('es-CL'));
-                }
+                cabecera.append(punto, crearTexto('h3', 'font-bold text-white text-sm', item.empresa || 'Servicio de buses'),
+                    crearTexto('span', 'text-[10px] px-2 py-0.5 rounded-full bg-slate-700 text-slate-300', `Andén ${item.anden || 'sin asignar'}`));
                 const datoEstado = estadosRutas.get(item.id);
-                const estado = crearTexto('p', `horario-estado ${datoEstado ? (datoEstado.disponible ? 'text-blue-400' : 'text-amber-400') : 'text-slate-400'}`,
+                const estado = crearTexto('p', `text-[10px] ${datoEstado ? (datoEstado.disponible ? 'text-blue-400' : 'text-amber-400') : 'text-slate-400'}`,
                     datoEstado ? datoEstado.texto : (mapaRutas ? 'Buscando trazado...' : 'Mapa no disponible'));
                 estado.id = `estado-ruta-${item.id}`;
                 estado.title = datoEstado ? datoEstado.nota_itinerario || datoEstado.texto : '';
-                detalle.append(recorrido, empresa, crearTexto('p', 'horario-metadatos', metadatos.join(' · ')));
-                seleccionar.append(tiempo, detalle);
+                detalle.append(cabecera, crearTexto('p', 'text-xs text-slate-300', `${item.origen || ''} → ${item.destino || ''}`),
+                    crearTexto('p', 'text-xs text-slate-300', `${item.sentido === 'vuelta' ? 'Vuelta' : 'Ida'}${item.precio != null ? ' · $' + Number(item.precio).toLocaleString('es-CL') : ''} · ${item.dias || 'Días sin informar'}`), estado);
+                if (Array.isArray(item.paradas) && item.paradas.length) detalle.append(crearTexto('p', 'text-xs text-slate-300', 'Paradas: ' + item.paradas.map(parada => `${parada.nombre}${parada.confirmada ? ' (confirmada)' : ' (sin confirmar)'}`).join(' → ')));
+                const hora = crearTexto('div', 'hora-horario text-right pl-2 shrink-0', '');
+                hora.id = `hora-horario-${item.id}`;
+                seleccionar.setAttribute('aria-describedby', `${detalle.id} ${hora.id}`);
+                const horaOriginal = String((currentTab === 'salidas' ? item.salida : item.llegada) || '');
+                const horaVisible = horaOriginal.match(/^(\d{1,2}):(\d{2})/);
+                hora.append(crearTexto('span', 'text-xs text-slate-400 block', currentTab === 'salidas' ? 'Salida' : 'Llegada'),
+                    crearTexto('span', 'text-xl font-black text-white font-mono', horaVisible ? `${horaVisible[1].padStart(2, '0')}:${horaVisible[2]}` : '—'));
+                seleccionar.append(detalle, hora);
                 tarjeta.append(seleccionar);
-
-                if (favoritosControl) {
-                    const acciones = crearTexto('div', 'horario-acciones', '');
-                    acciones.append(favoritosControl.crearBoton(item));
-                    tarjeta.append(acciones);
-                }
-
-                const pie = crearTexto('div', 'horario-pie', '');
-                pie.append(estado);
-                if (Array.isArray(item.paradas) && item.paradas.length) {
-                    const paradas = crearTexto('details', 'horario-paradas', '');
-                    paradas.append(crearTexto('summary', '', `Ver ${item.paradas.length} ${item.paradas.length === 1 ? 'parada' : 'paradas'}`));
-                    const lista = document.createElement('ul');
-                    for (const parada of item.paradas) {
-                        lista.append(crearTexto('li', '', `${parada.nombre || 'Parada sin nombre'} · ${parada.confirmada ? 'Confirmada' : 'Sin confirmar'}`));
-                    }
-                    paradas.append(lista);
-                    pie.append(paradas);
-                }
-                tarjeta.append(pie);
+                if (favoritosControl) tarjeta.append(favoritosControl.crearBoton(item));
                 contenedor.append(tarjeta);
             });
-            contenedor.scrollTop = desplazamiento;
         }
 
         function actualizarVistaMapa() {
@@ -692,7 +623,11 @@
         function seleccionarHorario(index) {
             if (index != null && (!Number.isInteger(index) || !datosHorarios[index])) return;
             itemSeleccionadoIndex = index == null ? null : index;
+            const panel = document.getElementById('panel-lateral');
+            const lista = document.getElementById('lista-horarios');
+            const desplazamientoPanel = panel.scrollTop, desplazamientoLista = lista.scrollTop;
             renderizarLista();
+            panel.scrollTop = desplazamientoPanel; lista.scrollTop = desplazamientoLista;
             if (mapaRutas) mapaRutas.seleccionar(itemSeleccionadoIndex == null ? null : datosHorarios[itemSeleccionadoIndex].id);
         }
 
@@ -734,7 +669,7 @@
                         if (etiqueta) {
                             etiqueta.textContent = estado.texto;
                             etiqueta.title = estado.nota_itinerario || estado.texto;
-                            etiqueta.className = `horario-estado ${estado.disponible ? 'text-blue-400' : 'text-amber-400'}`;
+                            etiqueta.className = `text-[10px] ${estado.disponible ? 'text-blue-400' : 'text-amber-400'}`;
                         }
                     },
                     onSeleccion: id => {

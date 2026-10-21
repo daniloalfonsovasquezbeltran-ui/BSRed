@@ -1,5 +1,5 @@
 // Service Worker: network-first para HTML y APIs, cache-first para estáticos
-const CACHE = 'bsred-v12';
+const CACHE = 'bsred-v13';
 const ASSETS = [
   '/',
   '/logo.jpg',
@@ -7,7 +7,7 @@ const ASSETS = [
   '/telemetria.js',
   '/mapa-rutas.js',
   '/favoritos.js',
-  '/entorno.js?v=movil-20261021', '/horarios.css?v=movil-20261021', '/panel-responsive.css?v=movil-20261021',
+  '/entorno.js?v=movil-20261021', '/horarios.css?v=responsive-20261021', '/panel-responsive.css?v=movil-20261021',
   '/privacidad.html', '/privacidad-aviso.js', '/privacidad-aviso.css',
   '/choferes.js', '/usuario', '/offline.html', '/styles.css', '/offline.js', '/accesibilidad.js',
   '/operaciones.js', '/cuentas.js?v=10', '/nativo-notificaciones.js', '/leaflet.js', '/leaflet.css',
