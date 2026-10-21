@@ -1,6 +1,9 @@
 """Cambio y recuperación de claves, con enlaces de un uso y correo TLS."""
 from email.message import EmailMessage
 from email.utils import formataddr, parseaddr
+from html import escape
+from pathlib import Path
+from string import Template
 import base64
 import hashlib
 import json
@@ -88,6 +91,13 @@ def _email_content(token, config):
             + '\n\nSi no hiciste esta solicitud, puedes ignorar el correo.\n')
 
 
+def _email_html_content(token, config):
+    template = Path(__file__).with_name('templates') / 'correo-recuperacion.html'
+    return Template(template.read_text(encoding='utf-8')).substitute(
+        reset_url=escape(config['base_url'] + '/usuario#restablecer=' + token, quote=True),
+        site_url=escape(config['base_url'], quote=True))
+
+
 def _mail_opener():
     class NoRedirect(HTTPRedirectHandler):
         def redirect_request(self, req, fp, code, msg, headers, newurl):
@@ -99,7 +109,8 @@ def _mail_opener():
 def _deliver_brevo_email(email, token, config):
     payload = {'sender': {'email': config['sender'], 'name': config['name']},
                'to': [{'email': email}], 'subject': 'Restablece tu contraseña de BSRed',
-               'textContent': _email_content(token, config)}
+               'textContent': _email_content(token, config),
+               'htmlContent': _email_html_content(token, config)}
     req = Request('https://api.brevo.com/v3/smtp/email', method='POST',
                   headers={'api-key': config['api_key'], 'Content-Type': 'application/json',
                            'Accept': 'application/json'},
@@ -137,6 +148,7 @@ def _deliver_gmail_email(email, token, config):
     message['To'] = email
     message['Subject'] = 'Restablece tu contraseña de BSRed'
     message.set_content(_email_content(token, config))
+    message.add_alternative(_email_html_content(token, config), subtype='html')
     raw = base64.urlsafe_b64encode(message.as_bytes()).decode('ascii')
     req = Request('https://gmail.googleapis.com/gmail/v1/users/me/messages/send', method='POST',
                   headers={'Authorization': 'Bearer ' + access, 'Content-Type': 'application/json',
@@ -160,6 +172,7 @@ def _deliver_reset_email(email, token, config):
     message['To'] = email
     message['Subject'] = 'Restablece tu contraseña de BSRed'
     message.set_content(_email_content(token, config))
+    message.add_alternative(_email_html_content(token, config), subtype='html')
     context = ssl.create_default_context()
     if config['port'] == 465:
         with smtplib.SMTP_SSL(config['host'], 465, timeout=12, context=context) as server:

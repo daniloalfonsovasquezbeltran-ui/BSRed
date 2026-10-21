@@ -5,6 +5,7 @@ from email import policy
 from email.parser import BytesParser
 from email.utils import parseaddr
 import hashlib
+from html.parser import HTMLParser
 import json
 import os
 from pathlib import Path
@@ -36,6 +37,25 @@ CURRENT = 'fixture-password'
 NEW = 'nueva-clave-fixture-2026'
 
 
+class EmailMarkup(HTMLParser):
+    def __init__(self, markup):
+        super().__init__()
+        self.tags = []
+        self.attributes = []
+        self.links = []
+        self.text = []
+        self.feed(markup)
+
+    def handle_starttag(self, tag, attrs):
+        self.tags.append(tag)
+        self.attributes.extend(attrs)
+        if tag == 'a':
+            self.links.append(dict(attrs).get('href'))
+
+    def handle_data(self, data):
+        self.text.append(data)
+
+
 class MailTransportTests(unittest.TestCase):
     def test_brevo_uses_fixed_https_fragment_link_and_never_uses_request_host(self):
         with patch.dict(os.environ, MAIL):
@@ -52,6 +72,11 @@ class MailTransportTests(unittest.TestCase):
         payload = json.loads(req.data)
         self.assertIn('https://bsred.onrender.com/usuario#restablecer=fixture-token', payload['textContent'])
         self.assertNotIn('?restablecer=', payload['textContent'])
+        markup = EmailMarkup(payload['htmlContent'])
+        self.assertIn('https://bsred.onrender.com/usuario#restablecer=fixture-token', markup.links)
+        self.assertIn('Restablecer contraseña', ' '.join(markup.text))
+        self.assertIn('30 minutos', ' '.join(markup.text))
+        self.assertNotIn(MAIL['BREVO_API_KEY'], json.dumps(payload))
         context = build.call_args.args[0]._context
         self.assertEqual(context.verify_mode, ssl.CERT_REQUIRED)
         self.assertTrue(context.check_hostname)
@@ -68,9 +93,44 @@ class MailTransportTests(unittest.TestCase):
         calls = [call[0] for call in server.method_calls]
         self.assertLess(calls.index('starttls'), calls.index('login'))
         self.assertEqual(server.starttls.call_args.kwargs['context'].verify_mode, ssl.CERT_REQUIRED)
+        starttls_message = server.send_message.call_args.args[0]
         with patch.object(cuentas.smtplib, 'SMTP_SSL') as smtp_ssl:
             cuentas._deliver_reset_email('receiver@example.invalid', 'fixture-token', {**config, 'port': 465})
         self.assertEqual(smtp_ssl.call_args.kwargs['context'].verify_mode, ssl.CERT_REQUIRED)
+        tls_message = smtp_ssl.return_value.__enter__.return_value.send_message.call_args.args[0]
+        for message in (starttls_message, tls_message):
+            self.assertEqual(message.get_content_type(), 'multipart/alternative')
+            plain = message.get_body(preferencelist=('plain',)).get_content()
+            html = message.get_body(preferencelist=('html',)).get_content()
+            link = 'https://bsred.onrender.com/usuario#restablecer=fixture-token'
+            self.assertIn(link, plain)
+            self.assertIn(link, EmailMarkup(html).links)
+            self.assertIn('30 minutos', plain)
+            self.assertIn('30 minutos', html)
+            self.assertNotIn(config['password'], plain + html)
+
+    def test_html_recovery_has_action_and_expiry_without_active_or_remote_assets(self):
+        html = cuentas._email_html_content('fixture-token', {'base_url': 'https://bsred.onrender.com'})
+        markup = EmailMarkup(html)
+        visible = ' '.join(markup.text)
+        self.assertIn('BSRed', visible)
+        self.assertIn('Restablecer contraseña', visible)
+        self.assertIn('30 minutos', visible)
+        self.assertIn('un solo uso', visible.lower())
+        self.assertIn('https://bsred.onrender.com/usuario#restablecer=fixture-token', markup.links)
+        self.assertFalse({'script', 'iframe', 'object', 'embed', 'form', 'img', 'link'} & set(markup.tags))
+        self.assertFalse(any(name in {'src', 'srcset', 'poster', 'background'} for name, _ in markup.attributes))
+        self.assertNotIn('@import', html.lower())
+        self.assertNotIn('url(', html.lower())
+
+    def test_html_recovery_escapes_dynamic_urls_instead_of_injecting_markup(self):
+        base = 'https://bsred.onrender.com/" onclick="alert(1)&x=<script>'
+        token = '\'" onmouseover="alert(1)<img src=x>&'
+        html = cuentas._email_html_content(token, {'base_url': base})
+        markup = EmailMarkup(html)
+        self.assertIn(base + '/usuario#restablecer=' + token, markup.links)
+        self.assertFalse({'script', 'img'} & set(markup.tags))
+        self.assertFalse(any(name.startswith('on') for name, _ in markup.attributes))
 
     def test_missing_provider_invalid_origin_and_insecure_smtp_are_unavailable(self):
         with patch.dict(os.environ, {**MAIL, 'BREVO_API_KEY': ''}):
@@ -152,11 +212,18 @@ class GmailTransportTests(unittest.TestCase):
         self.assertEqual(parseaddr(str(message['From'])), ('BSRed', 'bsredpanguipulli@gmail.com'))
         self.assertEqual(str(message['To']), 'receiver@example.invalid')
         self.assertEqual(str(message['Subject']), 'Restablece tu contraseña de BSRed')
-        content = message.get_content()
-        self.assertIn('https://bsred.onrender.com/usuario#restablecer=fixture-reset-token', content)
+        self.assertEqual(message.get_content_type(), 'multipart/alternative')
+        content = message.get_body(preferencelist=('plain',)).get_content()
+        html = message.get_body(preferencelist=('html',)).get_content()
+        link = 'https://bsred.onrender.com/usuario#restablecer=fixture-reset-token'
+        self.assertIn(link, content)
+        self.assertIn(link, EmailMarkup(html).links)
+        self.assertIn('Restablecer contraseña', ' '.join(EmailMarkup(html).text))
         self.assertIn('30 minutos', content)
+        self.assertIn('30 minutos', html)
         for secret in (GMAIL['GMAIL_CLIENT_SECRET'], GMAIL['GMAIL_REFRESH_TOKEN'], 'fixture-access-not-real'):
             self.assertNotIn(secret, message.as_string())
+            self.assertNotIn(secret, content + html)
         for call in build.call_args_list:
             context = call.args[0]._context
             self.assertEqual(context.verify_mode, ssl.CERT_REQUIRED)

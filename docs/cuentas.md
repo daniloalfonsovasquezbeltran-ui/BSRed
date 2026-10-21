@@ -22,6 +22,8 @@ Como alternativa en un alojamiento que permita SMTP, se admiten `SMTP_HOST`, `SM
 
 El enlace tiene la forma `/usuario#restablecer=TOKEN`. El fragmento no llega al servidor HTTP y la interfaz lo borra del historial inmediatamente. El token sólo queda en memoria del formulario; no se almacena en el navegador. La base conserva únicamente su hash, vence a los 30 minutos y sólo se consume una vez. Solicitar otro enlace invalida los anteriores.
 
+El correo incluye una versión HTML con el estilo de BSRed y un botón para restablecer la contraseña, además de una alternativa de texto con el mismo enlace. El diseño está en `templates/correo-recuperacion.html`; usa estilos en línea y no carga imágenes, fuentes ni seguimiento externos. Gmail y SMTP envían ambas versiones como `multipart/alternative`; Brevo recibe `htmlContent` y `textContent`.
+
 `POST /api/cuentas/restablecer` recibe `token` y `password`. Bloquea primero el usuario y después el token, revalida vencimiento/uso/suspensión y revoca todas las sesiones, avisos y credenciales. Un restablecimiento también cancela los viajes activos y borra su ubicación GPS. No inicia una sesión automáticamente.
 
 Aplicar `migrations/006_cuentas.sql` antes de desplegar. Las tablas privadas de recuperación y cuotas tienen RLS sin políticas públicas. Los endpoints no deben cachearse. Detrás de Render, la configuración de proxy del backend debe resolver la IP del cliente sólo a partir de saltos de confianza; el módulo no confía directamente en cabeceras reenviadas por el cliente.
