@@ -1,0 +1,140 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <meta name="description" content="Cómo BSRed utiliza los datos de cuentas, recuperación por correo, notificaciones y ubicación de buses.">
+    <meta name="theme-color" content="#0b1220">
+    <title>Política de privacidad | BSRed</title>
+    <link rel="canonical" href="https://bsred.onrender.com/privacidad.html">
+    <style>
+        :root { color-scheme: dark; }
+        * { box-sizing: border-box; }
+        body { margin: 0; background: #0b1220; color: #e2e8f0; font: 1rem/1.7 system-ui, sans-serif; }
+        main { max-width: 54rem; margin: auto; padding: 2rem 1.25rem 4rem; overflow-wrap: anywhere; }
+        header { padding-bottom: 1.5rem; border-bottom: 1px solid #334155; }
+        h1, h2 { line-height: 1.25; color: #f8fafc; }
+        h1 { font-size: clamp(1.8rem, 5vw, 2.5rem); }
+        h2 { margin-top: 2rem; font-size: 1.25rem; }
+        a { color: #93c5fd; text-underline-offset: .2em; }
+        a:hover { color: #dbeafe; }
+        a:focus-visible { outline: 3px solid #93c5fd; outline-offset: 4px; border-radius: 2px; }
+        li + li { margin-top: .5rem; }
+        .date { color: #cbd5e1; }
+        footer { margin-top: 2.5rem; padding-top: 1rem; border-top: 1px solid #334155; }
+    </style>
+</head>
+<body>
+    <main>
+        <header>
+            <a href="/">← Volver a BSRed</a>
+            <h1>Política de privacidad de BSRed</h1>
+            <p class="date">Última actualización: <time datetime="2026-10-21">21 de octubre de 2026</time>.</p>
+            <p>BSRed permite consultar horarios y recorridos de buses de Panguipulli, guardar favoritos,
+                recibir avisos y gestionar la operación de empresas y viajes. Esta política describe
+                el tratamiento de datos en el sitio web y la aplicación Android de BSRed.</p>
+            <p>Para consultas sobre privacidad, contacta a la administración de BSRed en
+                <a href="mailto:bsredpanguipulli@gmail.com">bsredpanguipulli@gmail.com</a>.</p>
+        </header>
+
+        <section aria-labelledby="datos">
+            <h2 id="datos">1. Datos que utiliza la aplicación</h2>
+            <ul>
+                <li><strong>Cuentas:</strong> nombre, correo electrónico, datos de autenticación, rol,
+                    empresa asociada y estado de la cuenta. Las cuentas de chofer pueden incluir
+                    teléfono y licencia cuando la empresa los registra.</li>
+                <li><strong>Favoritos y avisos:</strong> recorridos guardados, anticipación elegida,
+                    autorización de notificaciones e identificadores y tokens de los dispositivos
+                    que las activan.</li>
+                <li><strong>Uso del sitio:</strong> identificadores aleatorios de navegador y sesión,
+                    fechas de actividad y consultas de horarios, incluidos los términos de búsqueda.
+                    Se utilizan para estadísticas del servicio, seguridad y funcionamiento.</li>
+                <li><strong>Operación:</strong> empresas, buses, patentes, paradas, horarios, viajes,
+                    incidencias y registros de auditoría de las acciones realizadas.</li>
+                <li><strong>Ubicación del chofer:</strong> coordenadas, precisión y fecha de medición
+                    durante el seguimiento de un viaje activo, para mostrar el bus y estimar su llegada.</li>
+            </ul>
+            <p>Los datos de cuenta y operación se consultan mediante funciones autorizadas según el rol.
+                Los horarios y recorridos publicados están disponibles sin iniciar sesión.</p>
+        </section>
+
+        <section aria-labelledby="google">
+            <h2 id="google">2. Recuperación de cuenta y autorización de Gmail</h2>
+            <p>BSRed utiliza Gmail API para enviar los mensajes de recuperación desde la cuenta
+                <strong>bsredpanguipulli@gmail.com</strong>, cuando su titular autoriza el servicio.
+                La autorización solicita el permiso de envío <code>gmail.send</code>; no permite leer
+                los mensajes existentes del buzón. La aplicación no solicita a los demás usuarios
+                autorización para acceder a sus cuentas Google.</p>
+            <p>Google procesa la dirección del destinatario y el mensaje enviado, que contiene un enlace
+                para restablecer la contraseña. El enlace es de un solo uso y vence a los 30 minutos.
+                Las credenciales OAuth se guardan en la configuración privada del servidor para renovar
+                la autorización de envío; no forman parte del sitio público ni del APK.</p>
+            <p>El acceso a Gmail se limita al envío de recuperación de cuentas. Su uso y la transferencia
+                de información recibida de las APIs de Google se ajustan a la
+                <a href="https://developers.google.com/terms/api-services-user-data-policy">Política de Datos del Usuario de los Servicios de API de Google</a>,
+                incluidos los requisitos de Uso Limitado. Estos datos no se utilizan para publicidad
+                ni para su venta.</p>
+            <p>La contraseña de BSRed es independiente de la contraseña de Google. El titular de la
+                cuenta remitente puede retirar la autorización desde
+                <a href="https://myaccount.google.com/connections">las conexiones de su cuenta Google</a>.</p>
+        </section>
+
+        <section aria-labelledby="ubicacion">
+            <h2 id="ubicacion">3. Ubicación y notificaciones</h2>
+            <p>Conceder el permiso de ubicación no inicia por sí solo el envío de coordenadas.
+                El chofer debe iniciar un viaje. En Android, el servicio muestra una notificación
+                persistente y puede continuar con la pantalla apagada mientras el seguimiento está activo.</p>
+            <p>Durante el viaje, el mapa público puede mostrar la posición reciente del bus, su patente,
+                el recorrido y una llegada estimada. Esa vista no publica el nombre ni el correo del chofer.
+                Los puntos con más de dos minutos se ocultan; ocultarlos no equivale a borrarlos de la base.
+                Finalizar o cancelar el viaje revoca el seguimiento y elimina sus coordenadas del registro del viaje.</p>
+            <p>Los avisos se activan por dispositivo y requieren permiso del sistema o navegador.
+                Firebase Cloud Messaging procesa los tokens y los mensajes Android; Web Push utiliza
+                el proveedor de notificaciones del navegador. Puedes desactivar los avisos en BSRed
+                o en los ajustes de tu dispositivo. Los favoritos, por sí solos, no activan los avisos.</p>
+        </section>
+
+        <section aria-labelledby="proveedores">
+            <h2 id="proveedores">4. Servicios que intervienen</h2>
+            <ul>
+                <li><strong>Render y Supabase:</strong> alojamiento del servidor y almacenamiento de los
+                    datos de la aplicación. Pueden tratar datos técnicos de conexión para prestar sus servicios.</li>
+                <li><strong>Google:</strong> Gmail API para recuperación de cuentas y Firebase Cloud
+                    Messaging para notificaciones Android, según las funciones activadas.</li>
+                <li><strong>Mapas:</strong> el navegador consulta imágenes de mapa de Esri, que recibe
+                    datos de conexión y el área solicitada. El servidor consulta OSRM con puntos del
+                    recorrido o paradas para obtener trazados de carretera.</li>
+            </ul>
+            <p>Estos proveedores pueden procesar información en infraestructura fuera de Chile.
+                BSRed comunica a cada servicio los datos necesarios para las funciones descritas.</p>
+        </section>
+
+        <section aria-labelledby="conservacion">
+            <h2 id="conservacion">5. Cookies, almacenamiento y conservación</h2>
+            <p>Las cookies mantienen la sesión, vinculan los avisos al dispositivo y permiten medir
+                visitantes. El navegador puede conservar horarios y favoritos para consulta sin conexión.
+                Puedes borrar estos datos desde sus ajustes. Al confirmarse el cierre de sesión con
+                el servidor, se revocan la sesión y los avisos de ese dispositivo y se elimina la copia
+                local de cuenta y favoritos. Sin conexión, la revocación del servidor queda pendiente
+                hasta reconectar. Los choferes deben finalizar su viaje antes de cerrar sesión.</p>
+            <p>Las sesiones tienen una vigencia de 24 horas y los enlaces de recuperación, de 30 minutos.
+                La expiración impide utilizar esas credenciales, pero no supone el borrado inmediato de
+                todos los registros relacionados. Los registros de cuentas, operación y auditoría no
+                tienen un borrado automático general en esta versión.</p>
+            <p>Puedes solicitar información, correcciones o eliminación de tus datos escribiendo al
+                contacto indicado. Los registros operativos y de seguridad se revisan teniendo en
+                cuenta la información que deba conservarse para atender incidencias u obligaciones aplicables.</p>
+        </section>
+
+        <section aria-labelledby="controles">
+            <h2 id="controles">6. Contacto y controles disponibles</h2>
+            <p>Puedes cambiar tu contraseña desde tu cuenta, administrar favoritos y avisos, cerrar sesión
+                y revisar los permisos del dispositivo. Los choferes pueden finalizar el viaje para detener
+                el seguimiento. Para otras solicitudes sobre tus datos, escribe a
+                <a href="mailto:bsredpanguipulli@gmail.com">bsredpanguipulli@gmail.com</a>.</p>
+            <p>Las actualizaciones de esta política se publican en esta página con su fecha de revisión.</p>
+        </section>
+        <footer><a href="/">Volver a los horarios de BSRed</a></footer>
+    </main>
+</body>
+</html>
