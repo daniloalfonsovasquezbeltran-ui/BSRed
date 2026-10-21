@@ -126,7 +126,7 @@
 
     function reset() {
         const local = ++revision;
-        const card = mount('Restablecer contraseña', 'Elige una contraseña de 10 a 128 caracteres. El enlace vence a los 30 minutos y sólo puede usarse una vez.');
+        const card = mount('Restablecer contraseña', 'Elige una contraseña de 10 a 128 caracteres. El enlace vence a los 10 minutos y sólo puede usarse una vez.');
         if (!card) return;
         const form = element('form', '', 'space-y-4');
         const password = field(form, 'password', 'Nueva contraseña');

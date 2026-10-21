@@ -23,6 +23,7 @@ from choferes import stop_driver
 
 SESSION_COOKIE = 'bsred_sesion'
 SESSION_SECONDS = 24 * 60 * 60
+RESET_TOKEN_MINUTES = 10
 TOKEN_PATTERN = re.compile(r'^[A-Za-z0-9_-]{43}$')
 EMAIL_PATTERN = re.compile(r'[^\s@]+@[^\s@]+\.[^\s@]+')
 RECOVERY_MESSAGE = 'Si existe una cuenta activa con ese correo, recibirás instrucciones. Si no llegan, contacta al administrador.'
@@ -87,7 +88,7 @@ def mail_configuration():
 def _email_content(token, config):
     link = config['base_url'] + '/usuario#restablecer=' + token
     return ('Recibimos una solicitud para restablecer tu contraseña de BSRed.\n\n'
-            'Abre este enlace, válido durante 30 minutos y para un solo uso:\n' + link
+            f'Abre este enlace, válido durante {RESET_TOKEN_MINUTES} minutos y para un solo uso:\n' + link
             + '\n\nSi no hiciste esta solicitud, puedes ignorar el correo.\n')
 
 
@@ -95,7 +96,7 @@ def _email_html_content(token, config):
     template = Path(__file__).with_name('templates') / 'correo-recuperacion.html'
     return Template(template.read_text(encoding='utf-8')).substitute(
         reset_url=escape(config['base_url'] + '/usuario#restablecer=' + token, quote=True),
-        site_url=escape(config['base_url'], quote=True))
+        site_url=escape(config['base_url'], quote=True), expiry_minutes=RESET_TOKEN_MINUTES)
 
 
 def _mail_opener():
@@ -345,8 +346,8 @@ def register_accounts(app, connection, current_user, token_hash):
                         cur.execute('''UPDATE password_reset_tokens SET usado_en=CURRENT_TIMESTAMP
                             WHERE usuario_id=%s AND usado_en IS NULL;''', (user['id'],))
                         cur.execute('''INSERT INTO password_reset_tokens (token_hash, usuario_id, expira_en)
-                            VALUES (%s, %s, CURRENT_TIMESTAMP + INTERVAL '30 minutes');''',
-                            (token_hash(token), user['id']))
+                            VALUES (%s, %s, CURRENT_TIMESTAMP + (%s * INTERVAL '1 minute'));''',
+                            (token_hash(token), user['id'], RESET_TOKEN_MINUTES))
                         mail = (user['email'], token)
                 _cleanup(cur)
             conn.commit()
@@ -383,9 +384,11 @@ def register_accounts(app, connection, current_user, token_hash):
                 else:
                     user = None
                 if user:
+                    # También limita enlaces antiguos emitidos con un plazo mayor.
                     cur.execute('''SELECT token_hash FROM password_reset_tokens WHERE token_hash=%s
-                        AND usuario_id=%s AND usado_en IS NULL AND expira_en>CURRENT_TIMESTAMP FOR UPDATE;''',
-                        (digest, user_id))
+                        AND usuario_id=%s AND usado_en IS NULL AND expira_en>clock_timestamp()
+                        AND creado_en>clock_timestamp() - (%s * INTERVAL '1 minute') FOR UPDATE;''',
+                        (digest, user_id, RESET_TOKEN_MINUTES))
                     valid = bool(cur.fetchone())
                 else:
                     valid = False

@@ -20,7 +20,7 @@ Como alternativa en un alojamiento que permita SMTP, se admiten `SMTP_HOST`, `SM
 
 `POST /api/cuentas/recuperar` recibe `email` y devuelve el mismo 202 para una cuenta activa, un correo desconocido o una cuota agotada. El proveedor recibe el envío en segundo plano; los errores se registran únicamente por su clase, sin dirección, enlace ni clave. Se limitan las solicitudes por IP y correo mediante contadores persistentes con identificadores hash.
 
-El enlace tiene la forma `/usuario#restablecer=TOKEN`. El fragmento no llega al servidor HTTP y la interfaz lo borra del historial inmediatamente. El token sólo queda en memoria del formulario; no se almacena en el navegador. La base conserva únicamente su hash, vence a los 30 minutos y sólo se consume una vez. Solicitar otro enlace invalida los anteriores.
+El enlace tiene la forma `/usuario#restablecer=TOKEN`. El fragmento no llega al servidor HTTP y la interfaz lo borra del historial inmediatamente. El token sólo queda en memoria del formulario; no se almacena en el navegador. La base conserva únicamente su hash, vence a los 10 minutos y sólo se consume una vez. El servidor aplica ese máximo desde la creación también a los enlaces antiguos emitidos con un plazo mayor. Solicitar otro enlace invalida los anteriores.
 
 El correo incluye una versión HTML con el estilo de BSRed y un botón para restablecer la contraseña, además de una alternativa de texto con el mismo enlace. El diseño está en `templates/correo-recuperacion.html`; usa estilos en línea y no carga imágenes, fuentes ni seguimiento externos. Gmail y SMTP envían ambas versiones como `multipart/alternative`; Brevo recibe `htmlContent` y `textContent`.
 

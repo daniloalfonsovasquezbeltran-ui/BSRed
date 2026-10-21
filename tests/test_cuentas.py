@@ -75,7 +75,7 @@ class MailTransportTests(unittest.TestCase):
         markup = EmailMarkup(payload['htmlContent'])
         self.assertIn('https://bsred.onrender.com/usuario#restablecer=fixture-token', markup.links)
         self.assertIn('Restablecer contraseña', ' '.join(markup.text))
-        self.assertIn('30 minutos', ' '.join(markup.text))
+        self.assertIn('10 minutos', ' '.join(markup.text))
         self.assertNotIn(MAIL['BREVO_API_KEY'], json.dumps(payload))
         context = build.call_args.args[0]._context
         self.assertEqual(context.verify_mode, ssl.CERT_REQUIRED)
@@ -105,8 +105,8 @@ class MailTransportTests(unittest.TestCase):
             link = 'https://bsred.onrender.com/usuario#restablecer=fixture-token'
             self.assertIn(link, plain)
             self.assertIn(link, EmailMarkup(html).links)
-            self.assertIn('30 minutos', plain)
-            self.assertIn('30 minutos', html)
+            self.assertIn('10 minutos', plain)
+            self.assertIn('10 minutos', html)
             self.assertNotIn(config['password'], plain + html)
 
     def test_html_recovery_has_action_and_expiry_without_active_or_remote_assets(self):
@@ -115,7 +115,7 @@ class MailTransportTests(unittest.TestCase):
         visible = ' '.join(markup.text)
         self.assertIn('BSRed', visible)
         self.assertIn('Restablecer contraseña', visible)
-        self.assertIn('30 minutos', visible)
+        self.assertIn('10 minutos', visible)
         self.assertIn('un solo uso', visible.lower())
         self.assertIn('https://bsred.onrender.com/usuario#restablecer=fixture-token', markup.links)
         self.assertFalse({'script', 'iframe', 'object', 'embed', 'form', 'img', 'link'} & set(markup.tags))
@@ -219,8 +219,8 @@ class GmailTransportTests(unittest.TestCase):
         self.assertIn(link, content)
         self.assertIn(link, EmailMarkup(html).links)
         self.assertIn('Restablecer contraseña', ' '.join(EmailMarkup(html).text))
-        self.assertIn('30 minutos', content)
-        self.assertIn('30 minutos', html)
+        self.assertIn('10 minutos', content)
+        self.assertIn('10 minutos', html)
         for secret in (GMAIL['GMAIL_CLIENT_SECRET'], GMAIL['GMAIL_REFRESH_TOKEN'], 'fixture-access-not-real'):
             self.assertNotIn(secret, message.as_string())
             self.assertNotIn(secret, content + html)
@@ -394,7 +394,7 @@ class AccountPostgresTests(unittest.TestCase):
         self.assertEqual(result.status_code, 403)
         self.assertIsNone(self.query('SELECT password_hash FROM usuarios WHERE id=1;')[0]['password_hash'])
 
-    def test_recovery_is_generic_and_stores_only_hash_with_thirty_minute_expiry(self):
+    def test_recovery_is_generic_and_stores_only_hash_with_ten_minute_expiry(self):
         existing = self.recover()
         unknown = self.recover('unknown@example.invalid')
         suspended = self.recover('suspendido@example.invalid')
@@ -406,8 +406,33 @@ class AccountPostgresTests(unittest.TestCase):
         self.assertNotIn(token, existing.get_data(as_text=True))
         rows = self.query('SELECT token_hash,usuario_id,expira_en-creado_en AS lifetime FROM password_reset_tokens;')
         self.assertEqual(rows[0]['token_hash'].strip(), hashlib.sha256(token.encode()).hexdigest())
-        self.assertEqual(rows[0]['lifetime'].total_seconds(), 1800)
+        self.assertEqual(rows[0]['lifetime'].total_seconds(), 600)
         self.assertEqual(rows[0]['usuario_id'], 1)
+
+    def test_legacy_thirty_minute_tokens_obey_ten_minute_maximum_age(self):
+        for age_minutes, expected_status in ((11, 400), (10, 400), (9, 200)):
+            with self.subTest(age_minutes=age_minutes):
+                self.assertEqual(self.recover().status_code, 202)
+                token = self.mail[-1][1]
+                digest = hashlib.sha256(token.encode()).hexdigest()
+                # Simulate a token issued by the old 30-minute policy. Its stored
+                # expiry is still in the future even at the new 10-minute limit.
+                self.query("""UPDATE password_reset_tokens
+                    SET creado_en=CURRENT_TIMESTAMP-(%s * INTERVAL '1 minute'),
+                        expira_en=CURRENT_TIMESTAMP+(%s * INTERVAL '1 minute')
+                    WHERE token_hash=%s;""", (age_minutes, 30 - age_minutes, digest))
+                response = self.reset(token)
+                self.assertEqual(response.status_code, expected_status, response.json)
+                user = self.query('SELECT password,password_hash FROM usuarios WHERE id=1;')[0]
+                if expected_status == 400:
+                    self.assertEqual(user['password'], CURRENT)
+                    self.assertIsNone(user['password_hash'])
+                    self.assertIsNone(self.query(
+                        'SELECT usado_en FROM password_reset_tokens WHERE token_hash=%s;',
+                        (digest,))[0]['usado_en'])
+                else:
+                    self.assertEqual(user['password'], '')
+                    self.assertTrue(check_password_hash(user['password_hash'], NEW))
 
     def test_unconfigured_mail_is_honest_and_creates_no_tokens(self):
         with patch.dict(os.environ, {'BREVO_API_KEY': ''}):

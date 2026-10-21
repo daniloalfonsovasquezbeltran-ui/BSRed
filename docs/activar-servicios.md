@@ -66,7 +66,7 @@ Brevo permite usar un dominio propio autenticado. [Sustituye los remitentes Gmai
 
 5. Guarda la configuración. La opción de recuperación se habilita cuando el servidor detecta el proveedor configurado. Comprueba también en Brevo que la cuenta tenga autorizado el envío transaccional.
 
-La presencia de credenciales no garantiza la entrega: la verificación del remitente, la autorización del proveedor y la conectividad deben funcionar. Los correos de recuperación sólo se envían cuando el usuario solicita recuperar su cuenta. Los enlaces son de un uso y caducan a los 30 minutos.
+La presencia de credenciales no garantiza la entrega: la verificación del remitente, la autorización del proveedor y la conectividad deben funcionar. Los correos de recuperación sólo se envían cuando el usuario solicita recuperar su cuenta. Los enlaces son de un uso y caducan a los 10 minutos.
 
 ## Validación en un teléfono
 
