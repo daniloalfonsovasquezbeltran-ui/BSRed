@@ -206,6 +206,7 @@ def public_asset(filename):
         'index.html', 'usuario.html', 'privacidad.html', 'privacidad-aviso.js', 'privacidad-aviso.css',
         'manifest.json', 'sw.js', 'telemetria.js', 'mapa-rutas.js', 'favoritos.js',
         'entorno.js', 'horarios.css', 'panel-responsive.css',
+        'maplibre-gl.js', 'maplibre-gl.css', 'leaflet-maplibre-gl.js', 'mapa-base.js', 'mapa-base.json',
         'logo.jpg', 'logo_192.png', 'logo_512.png', 'choferes.js'
         , 'operaciones.js', 'cuentas.js', 'nativo-notificaciones.js', 'accesibilidad.js',
         'offline.js', 'offline.html', 'styles.css', 'leaflet.js', 'leaflet.css',

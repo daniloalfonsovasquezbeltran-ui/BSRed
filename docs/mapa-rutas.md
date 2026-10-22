@@ -1,5 +1,24 @@
 # Recorridos y ubicación estimada
 
+La vista de calles usa OpenFreeMap con el estilo Liberty adaptado en
+`mapa-base.json`. El estilo Liberty de OpenFreeMap, derivado de OSM Liberty y
+Mapbox Open Styles, se adapta para BSRed eliminando puntos de interés y
+priorizando nombres en español. Los avisos de licencia y créditos están en
+`licenses/`. Conserva nombres de localidades, sectores, calles y cursos de
+agua. Se excluyen las capas de puntos de interés y aeropuertos; no aparecen
+marcadores de negocios. Los nombres de localidades prefieren español cuando
+la cartografía dispone de ese dato. Los recorridos, buses y paradas de BSRed
+siguen siendo capas de Leaflet independientes del fondo.
+
+El renderizador local es MapLibre GL JS 5.24.0, integrado con Leaflet mediante
+`@maplibre/maplibre-gl-leaflet` 0.1.4; sus licencias están en `licenses/`.
+`mapa-base.js` mantiene una vista sencilla de Esri Light Gray con su capa de
+nombres hasta completar la carga. Esa vista también permite usar el mapa si el
+navegador no admite el renderizador o falla su carga inicial. Las imágenes Esri
+se amplían desde el nivel nativo 16 hasta el 18 para evitar solicitar niveles
+vacíos en la zona. La cartografía externa necesita conexión a internet; los
+archivos de la aplicación se conservan mediante el service worker.
+
 El mapa usa geometría vial de OpenStreetMap a través de OSRM. Ya no une el
 origen y el destino con una línea recta. Cuando no hay paradas confirmadas,
 las coordenadas representan centros de localidades. Si una empresa configura

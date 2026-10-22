@@ -22,6 +22,10 @@
     
     <link rel="stylesheet" href="/leaflet.css" />
     <script src="/leaflet.js"></script>
+    <link rel="stylesheet" href="/maplibre-gl.css?v=5.24.0" />
+    <script src="/maplibre-gl.js?v=5.24.0"></script>
+    <script src="/leaflet-maplibre-gl.js?v=0.1.4"></script>
+    <script src="/mapa-base.js?v=calles-20261022"></script>
 
     <style>
         .custom-scrollbar::-webkit-scrollbar { width: 5px; }
@@ -204,12 +208,7 @@
         const map = typeof L !== 'undefined'
             ? L.map('map').setView(CENTRO_TERMINAL, 10)
             : null;
-        if (map) {
-            L.tileLayer('https://server.arcgisonline.com/ArcGIS/rest/services/Canvas/World_Dark_Gray_Base/MapServer/tile/{z}/{y}/{x}', {
-                maxZoom: 16,
-                attribution: 'Tiles © Esri'
-            }).addTo(map);
-        }
+        if (map && window.BSRedMapaBase) BSRedMapaBase.crear(map, L);
 
         let currentTab = 'salidas';
         let datosHorarios = [];
