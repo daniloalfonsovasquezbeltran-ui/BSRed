@@ -79,3 +79,15 @@ html[data-compacto="true"] .pagina-horarios #modal-auth button { min-height: 44p
     html[data-compacto="true"] .pagina-horarios .controles-horarios:not(:has(details[open])) > #horarios-actualizacion { grid-column: 1; grid-row: 3; }
     html[data-compacto="true"] .pagina-horarios .controles-horarios:not(:has(details[open])) > #btn-reset { grid-column: 2; grid-row: 3; }
 }
+
+/* El resumen conserva el título cuando se minimiza para dejar ver más mapa. */
+#resumen-mapa > summary { display: flex; align-items: center; justify-content: space-between; gap: 8px; min-height: 44px; padding: 0; cursor: pointer; list-style: none; }
+#resumen-mapa > summary::-webkit-details-marker { display: none; }
+#resumen-mapa > summary:focus-visible { outline: 2px solid #93c5fd; outline-offset: 2px; border-radius: 6px; }
+#resumen-mapa .mapa-vista-titulo { min-width: 0; overflow-wrap: anywhere; }
+#resumen-mapa .resumen-mapa-accion { display: inline-flex; align-items: center; gap: 4px; flex-shrink: 0; color: #93c5fd; font-size: 11px; white-space: nowrap; }
+#resumen-mapa .resumen-mapa-accion svg { width: 16px; height: 16px; }
+#resumen-mapa[open] .resumen-mapa-accion svg { transform: rotate(180deg); }
+#resumen-mapa[open] .resumen-accion-abrir, #resumen-mapa:not([open]) .resumen-accion-cerrar { display: none; }
+#resumen-mapa[open] #contenido-resumen-mapa { margin-top: 4px; }
+#resumen-mapa:not([open]) { padding: 4px 8px; }
