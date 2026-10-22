@@ -91,3 +91,12 @@ html[data-compacto="true"] .pagina-horarios #modal-auth button { min-height: 44p
 #resumen-mapa[open] .resumen-accion-abrir, #resumen-mapa:not([open]) .resumen-accion-cerrar { display: none; }
 #resumen-mapa[open] #contenido-resumen-mapa { margin-top: 4px; }
 #resumen-mapa:not([open]) { padding: 4px 8px; }
+
+/* Cartografía y controles en el mismo tema oscuro que la página. */
+.pagina-horarios #map { background-color: #0b1220; }
+.pagina-horarios #map .leaflet-bar { border-color: #334155; }
+.pagina-horarios #map .leaflet-control-zoom a { background-color: #1e293b; color: #e2e8f0; border-bottom-color: #475569; }
+.pagina-horarios #map .leaflet-control-zoom a:hover { background-color: #334155; }
+.pagina-horarios #map .leaflet-control-zoom a.leaflet-disabled { color: #64748b; }
+.pagina-horarios #map .leaflet-control-attribution { background-color: rgba(15,23,42,.88); color: #cbd5e1; }
+.pagina-horarios #map .leaflet-control-attribution a { color: #93c5fd; }

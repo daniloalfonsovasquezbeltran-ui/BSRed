@@ -16,10 +16,10 @@
 
         // La vista simple permite consultar recorridos cuando el navegador no admite WebGL.
         const opciones = { maxZoom: 18, maxNativeZoom: 16 };
-        const baseSimple = L.tileLayer('https://server.arcgisonline.com/ArcGIS/rest/services/Canvas/World_Light_Gray_Base/MapServer/tile/{z}/{y}/{x}', {
+        const baseSimple = L.tileLayer('https://server.arcgisonline.com/ArcGIS/rest/services/Canvas/World_Dark_Gray_Base/MapServer/tile/{z}/{y}/{x}', {
             ...opciones, attribution: ATRIBUCION_SIMPLE
         }).addTo(map);
-        const nombresSimples = L.tileLayer('https://server.arcgisonline.com/ArcGIS/rest/services/Canvas/World_Light_Gray_Reference/MapServer/tile/{z}/{y}/{x}', {
+        const nombresSimples = L.tileLayer('https://server.arcgisonline.com/ArcGIS/rest/services/Canvas/World_Dark_Gray_Reference/MapServer/tile/{z}/{y}/{x}', {
             ...opciones, pane: 'nombres-geograficos'
         }).addTo(map);
         let capa = null;
@@ -47,7 +47,7 @@
                 return baseSimple;
             }
             capa = L.maplibreGL({
-                style: '/mapa-base.json?v=calles-20261022',
+                style: '/mapa-base.json?v=oscuro-20261022',
                 pane: 'tilePane',
                 padding: 0.1,
                 interactive: false,
